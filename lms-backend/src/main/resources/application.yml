@@ -1,0 +1,327 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# LMS Backend — application.yml
+#
+# Every ${ENV_VAR:default} placeholder can be overridden at runtime via an
+# environment variable.  Keep all secrets (passwords, JWT secret, etc.) out
+# of this file in production — inject them via Docker secrets, K8s Secrets,
+# or a Vault provider.
+# ══════════════════════════════════════════════════════════════════════════════
+
+spring:
+  application:
+    name: lms-backend
+
+  # ── Database ─────────────────────────────────────────────────────────────────
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:lms_db}
+    username: ${DB_USERNAME:lms_user}
+    password: ${DB_PASSWORD:lms_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: lms-hikari
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000      # 10 min — reclaim idle connections
+      max-lifetime: 1800000     # 30 min — rotate before DB closes them
+
+  # ── JPA / Hibernate ──────────────────────────────────────────────────────────
+  jpa:
+    hibernate:
+      ddl-auto: validate         # schema managed by Flyway; Hibernate must not touch it
+    show-sql: false
+    open-in-view: false          # avoids lazy-loading across HTTP boundary
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        default_batch_fetch_size: 100   # avoids N+1 SELECT on collections
+        jdbc:
+          batch_size: 25               # groups INSERTs/UPDATEs into single round-trips
+          time_zone: UTC
+        order_inserts: true
+        order_updates: true
+        generate_statistics: false
+
+  # ── Flyway ───────────────────────────────────────────────────────────────────
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true    # create flyway_schema_history on a fresh DB
+    baseline-version: 0
+    validate-on-migrate: true    # fail if an applied migration's checksum changed
+    out-of-order: false          # reject lower-version migrations
+    sql-migration-prefix: V
+    sql-migration-separator: __
+    sql-migration-suffixes: .sql
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+          min-idle: 1
+          max-wait: 1000ms
+
+  cache:
+    # Per-cache TTLs and serialization are managed in RedisConfig.cacheManager()
+    type: redis
+    cache-names: users,courses,programs,grading-scales,course-materials,enrollment,attendance-summary
+
+  # ── Kafka / Spring Cloud Stream ───────────────────────────────────────────────
+  cloud:
+    function:
+      definition: >-
+        transcriptSemesterHandler;
+        enrollmentNotificationHandler;
+        attendanceAlertHandler;
+        assessmentEventHandler;
+        semesterEventHandler
+
+    stream:
+      default-binder: kafka
+      default:
+        content-type: application/json
+
+      # Consumer bindings — pre-declared; activated when spring.cloud.function.definition is set
+      bindings:
+        enrollmentNotificationHandler-in-0:
+          destination: lms.enrollment.events
+          group: ${spring.application.name}-notifications
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
+            back-off-max-interval: 10000
+            back-off-multiplier: 2.0
+        attendanceAlertHandler-in-0:
+          destination: lms.attendance.events
+          group: ${spring.application.name}-notifications
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
+            back-off-max-interval: 10000
+            back-off-multiplier: 2.0
+        assessmentEventHandler-in-0:
+          destination: lms.assessment.events
+          group: ${spring.application.name}-notifications
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
+            back-off-max-interval: 10000
+            back-off-multiplier: 2.0
+        semesterEventHandler-in-0:
+          destination: lms.semester.events
+          group: ${spring.application.name}-notifications
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
+            back-off-max-interval: 10000
+            back-off-multiplier: 2.0
+        transcriptSemesterHandler-in-0:
+          destination: lms.semester.events
+          group: ${spring.application.name}-transcript
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 2000
+            back-off-max-interval: 30000
+            back-off-multiplier: 2.0
+
+      kafka:
+        binder:
+          brokers: ${KAFKA_BROKERS:localhost:9092}
+          auto-create-topics: true
+          producer-properties:
+            acks: all              # wait for all in-sync replicas
+            retries: 3
+            enable.idempotence: true
+          configuration:
+            security.protocol: PLAINTEXT
+        bindings:
+          enrollmentNotificationHandler-in-0:
+            consumer:
+              start-offset: latest
+          attendanceAlertHandler-in-0:
+            consumer:
+              start-offset: latest
+          assessmentEventHandler-in-0:
+            consumer:
+              start-offset: latest
+          semesterEventHandler-in-0:
+            consumer:
+              start-offset: latest
+          transcriptSemesterHandler-in-0:
+            consumer:
+              start-offset: latest
+
+  # ── Mail ─────────────────────────────────────────────────────────────────────
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+
+# ── LMS custom properties ──────────────────────────────────────────────────────
+lms:
+  notifications:
+    from-email: ${MAIL_FROM:noreply@lms.local}
+    from-name: ${MAIL_FROM_NAME:LMS Platform}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+  # ── Jackson (REST JSON serialization) ─────────────────────────────────────────
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false   # ISO-8601 strings, not epoch ms
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false  # tolerate extra fields from clients
+    default-property-inclusion: non_null # omit null fields from responses
+    time-zone: UTC
+
+  # ── Spring MVC ────────────────────────────────────────────────────────────────
+  mvc:
+    problem-details:
+      enabled: true   # RFC 7807 structured error bodies (Spring 6+)
+
+  # ── File uploads ──────────────────────────────────────────────────────────────
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 55MB
+
+  # ── Async / scheduling executors ──────────────────────────────────────────────
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 16
+        queue-capacity: 100
+      thread-name-prefix: lms-async-
+    scheduling:
+      pool:
+        size: 4
+      thread-name-prefix: lms-sched-
+
+  # ── Spring Modulith ───────────────────────────────────────────────────────────
+  modulith:
+    # Re-publish events that were stored but not completed before the last shutdown
+    republish-outstanding-events-on-restart: true
+
+# ── Server ────────────────────────────────────────────────────────────────────
+server:
+  port: ${SERVER_PORT:8080}
+  compression:
+    enabled: true
+    mime-types: application/json,application/javascript,text/css,text/html,image/svg+xml
+    min-response-size: 2048
+  tomcat:
+    max-connections: 200
+    accept-count: 50
+    threads:
+      max: 50
+      min-spare: 10
+  error:
+    include-message: always
+
+# ── Actuator / Micrometer ─────────────────────────────────────────────────────
+# Management runs on a dedicated port so Spring Security never applies to it.
+# Prometheus scrapes :8081/actuator/prometheus
+# K8s probes: :8081/actuator/health/liveness  and  :8081/actuator/health/readiness
+# Dev shortcut: set MANAGEMENT_PORT=8080 to merge with the main port.
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info,metrics,prometheus,loggers,flyway,caches
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true   # /actuator/health/liveness + /actuator/health/readiness
+      group:
+        liveness:
+          include: ping
+        readiness:
+          include: db,redis,diskSpace
+    loggers:
+      enabled: true
+  info:
+    env:
+      enabled: true
+    java:
+      enabled: true
+    os:
+      enabled: true
+    git:
+      mode: simple   # branch + commit hash in /actuator/info (requires git-commit-id plugin)
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+      environment: ${ENVIRONMENT:local}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5,0.90,0.95,0.99
+      slo:
+        http.server.requests: 50ms,100ms,200ms,500ms,1000ms
+
+# ── Application info (exposed via /actuator/info) ─────────────────────────────
+info:
+  app:
+    name: ${spring.application.name}
+    description: Learning Management System — Spring Boot 3 / Spring Modulith
+    version: "@project.version@"
+
+# ── JWT ───────────────────────────────────────────────────────────────────────
+# IMPORTANT: set JWT_SECRET to a cryptographically random 256-bit+ value in
+#            every environment. Never commit the real secret.
+jwt:
+  secret: ${JWT_SECRET:change-this-in-production-must-be-at-least-32-chars!!}
+  expiration-ms: ${JWT_EXPIRATION_MS:86400000}         # 24 h
+  refresh-expiration-ms: ${JWT_REFRESH_MS:604800000}   # 7 d
+
+# ── Application-specific ──────────────────────────────────────────────────────
+app:
+  attendance:
+    threshold-percentage: ${ATTENDANCE_THRESHOLD:75}
+  files:
+    storage:
+      endpoint:                  ${MINIO_ENDPOINT:http://localhost:9000}
+      access-key:                ${MINIO_ACCESS_KEY:minioadmin}
+      secret-key:                ${MINIO_SECRET_KEY:minioadmin}
+      bucket-name:               ${MINIO_BUCKET:lms-files}
+      region:                    ${MINIO_REGION:us-east-1}
+      presigned-url-expiry-minutes: ${MINIO_PRESIGN_EXPIRY:60}
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging:
+  level:
+    root:                                    INFO
+    com.lms:                                 DEBUG
+    org.springframework.security:            WARN
+    org.springframework.web:                 WARN
+    org.hibernate.SQL:                       WARN   # DEBUG to see queries
+    org.hibernate.type.descriptor.sql:       WARN
+    org.flywaydb:                            INFO
+    org.apache.kafka:                        WARN
+    software.amazon.awssdk:                  WARN
+  pattern:
+    console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} : %m%n%wEx"

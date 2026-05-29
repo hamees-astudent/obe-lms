@@ -1,0 +1,24 @@
+{
+  "name": "lms-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:auth": "playwright test tests/auth/",
+    "test:courses": "playwright test tests/courses/",
+    "test:assessment": "playwright test tests/assessment/",
+    "test:attendance": "playwright test tests/attendance/",
+    "test:transcript": "playwright test tests/transcript/",
+    "test:notifications": "playwright test tests/notifications/",
+    "report": "playwright show-report",
+    "codegen": "playwright codegen"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5",
+    "dotenv": "^16.4.5"
+  }
+}
