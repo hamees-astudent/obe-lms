@@ -20,7 +20,7 @@ CREATE TABLE programs (
     description    TEXT,
 
     -- Nominal duration, e.g. 4 for a four-year programme
-    duration_years SMALLINT      NOT NULL DEFAULT 4
+    duration_years INTEGER       NOT NULL DEFAULT 4
                    CONSTRAINT programs_duration_chk CHECK (duration_years > 0),
 
     -- ACTIVE = open for new enrolments; INACTIVE = archived
@@ -59,7 +59,7 @@ CREATE TABLE plos (
     description TEXT,
 
     -- 1-based display / report ordering within the programme
-    order_index SMALLINT      NOT NULL
+    order_index INTEGER       NOT NULL
                 CONSTRAINT plos_order_chk CHECK (order_index > 0),
 
     created_at  TIMESTAMP     NOT NULL DEFAULT now(),

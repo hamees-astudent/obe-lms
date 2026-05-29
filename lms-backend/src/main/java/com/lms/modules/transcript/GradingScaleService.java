@@ -1,6 +1,6 @@
 package com.lms.modules.transcript;
 
-import com.lms.infrastructure.cache.CacheNames;
+import com.lms.shared.CacheNames;
 import com.lms.modules.transcript.dto.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;

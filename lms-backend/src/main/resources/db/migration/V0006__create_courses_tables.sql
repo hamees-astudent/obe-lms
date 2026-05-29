@@ -18,7 +18,7 @@ CREATE TABLE courses (
     name          VARCHAR(255) NOT NULL,
     description   TEXT,
 
-    credit_hours  SMALLINT     NOT NULL
+    credit_hours  INTEGER      NOT NULL
                   CONSTRAINT courses_credits_chk CHECK (credit_hours > 0),
 
     -- ACTIVE = can be offered in a semester  |  INACTIVE = archived

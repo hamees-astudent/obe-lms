@@ -32,7 +32,7 @@ CREATE TABLE clos (
     description TEXT,
 
     -- 1-based display ordering within the course
-    order_index SMALLINT      NOT NULL
+    order_index INTEGER       NOT NULL
                 CONSTRAINT clos_order_chk CHECK (order_index > 0),
 
     created_at  TIMESTAMP     NOT NULL DEFAULT now(),

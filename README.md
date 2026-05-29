@@ -10,11 +10,12 @@ A full-stack Learning Management System built with **Spring Boot 3.3** (backend)
 2. [Prerequisites](#prerequisites)
 3. [Infrastructure Setup](#infrastructure-setup)
 4. [Environment Variables](#environment-variables)
-5. [Running in Development](#running-in-development)
-6. [Building for Production](#building-for-production)
-7. [Project Structure](#project-structure)
-8. [API Overview](#api-overview)
-9. [Observability](#observability)
+5. [Default Login Credentials](#default-login-credentials)
+6. [Running in Development](#running-in-development)
+7. [Building for Production](#building-for-production)
+8. [Project Structure](#project-structure)
+9. [API Overview](#api-overview)
+10. [Observability](#observability)
 
 ---
 
@@ -43,7 +44,7 @@ Install the following before proceeding:
 | Tool | Minimum version | Notes |
 |---|---|---|
 | Java (JDK) | 21 | [Adoptium](https://adoptium.net/) recommended |
-| Maven | 3.9 | Or use the included `./mvnw` wrapper |
+| Maven | 3.8+ | Required to generate the Maven wrapper on first checkout |
 | Node.js | 20 LTS | Only needed for frontend standalone dev |
 | PostgreSQL | 15 | |
 | Redis | 7 | |
@@ -73,6 +74,23 @@ Install the following before proceeding:
 >   -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
 >   apache/kafka:3.7.0
 > ```
+
+---
+
+## Generating the Maven Wrapper
+
+The `./mvnw` wrapper script is not committed to the repository. Generate it once after cloning:
+
+```bash
+# Install Maven if not already present (Debian / Ubuntu)
+sudo apt-get install -y maven
+
+# Generate mvnw, mvnw.cmd, and .mvn/ inside lms-backend/
+cd lms-backend
+mvn wrapper:wrapper
+```
+
+All subsequent commands can then use `./mvnw` from the `lms-backend/` directory without requiring a system Maven installation.
 
 ---
 
@@ -142,6 +160,42 @@ export JWT_SECRET=my-very-long-random-secret-key-here
 
 ---
 
+## Default Login Credentials
+
+The database starts empty. Before logging in for the first time, create the initial admin user by running the following SQL against `lms_db`:
+
+```sql
+INSERT INTO users (id, email, password_hash, name, role, status)
+VALUES (
+    gen_random_uuid(),
+    'admin@lms.local',
+    '$2y$10$IA093FHbo6QB6pygsMKw7O7.RfboT7b3Ac1Hq7dONL3QIk6jhA/0C',
+    'System Admin',
+    'ADMIN',
+    'ACTIVE'
+);
+```
+
+| Field    | Value             |
+|----------|-------------------|
+| Email    | `admin@lms.local` |
+| Password | `admin123`        |
+| Role     | `ADMIN`           |
+
+Use these credentials at `POST /api/auth/login`:
+
+```json
+{ "email": "admin@lms.local", "password": "admin123" }
+```
+
+> **Security:** Change the password immediately in any non-local environment.  
+> To generate a fresh bcrypt hash for a new password run:
+> ```bash
+> htpasswd -bnBC 10 "" <new-password> | tr -d ':\n'
+> ```
+
+---
+
 ## Running in Development
 
 ### Option A — backend only (skip React build)
@@ -154,6 +208,12 @@ cd lms-backend
 ```
 
 The API is available at `http://localhost:8080/api`.
+
+> **Port conflict:** If port 8080 is already in use (e.g. by another Docker container), the app will fail to start with `"Port 8080 was already in use"`. Either stop the conflicting process or start the app on a different port:
+> ```bash
+> ./mvnw spring-boot:run -Dskip.frontend=true -Dspring-boot.run.arguments=--server.port=8081
+> # or export SERVER_PORT=8081 before running
+> ```
 
 ### Option B — frontend dev server (hot-reload)
 
