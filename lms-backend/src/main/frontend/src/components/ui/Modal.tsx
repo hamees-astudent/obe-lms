@@ -47,7 +47,7 @@ export default function Modal({ open, onClose, title, children, maxWidth = 'max-
       onClose={onClose}
       className={[
         'w-full rounded-2xl p-0 shadow-xl backdrop:bg-black/40',
-        'open:animate-fade-in',
+        'animate-scale-in',
         maxWidth,
       ].join(' ')}
     >

@@ -95,43 +95,49 @@ export default function TeacherDashboard() {
 
       {/* Stats row */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
-              <BookOpen size={20} />
+        <div className="animate-slide-up animation-delay-75">
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
+                <BookOpen size={20} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">
+                  {loadingOfferings ? <Spinner size="sm" /> : myOfferings.length}
+                </p>
+                <p className="text-sm text-gray-500">Active Courses</p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">
-                {loadingOfferings ? <Spinner size="sm" /> : myOfferings.length}
-              </p>
-              <p className="text-sm text-gray-500">Active Courses</p>
+          </Card>
+        </div>
+        <div className="animate-slide-up animation-delay-150">
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-600">
+                <ClipboardCheck size={20} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{activeSemesters.length}</p>
+                <p className="text-sm text-gray-500">Active Semesters</p>
+              </div>
             </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-600">
-              <ClipboardCheck size={20} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{activeSemesters.length}</p>
-              <p className="text-sm text-gray-500">Active Semesters</p>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
-              <Bell size={20} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">
-                {notificationsQ.isLoading ? <Spinner size="sm" /> : recentNotifications.filter((n) => !n.isRead).length}
-              </p>
+          </Card>
+        </div>
+        <div className="animate-slide-up animation-delay-300">
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+                <Bell size={20} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">
+                  {notificationsQ.isLoading ? <Spinner size="sm" /> : recentNotifications.filter((n) => !n.isRead).length}
+                </p>
               <p className="text-sm text-gray-500">Unread Alerts</p>
             </div>
           </div>
         </Card>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -159,10 +165,10 @@ export default function TeacherDashboard() {
             </div>
           ) : (
             <ul className="divide-y divide-gray-50">
-              {myOfferings.map((offering) => {
+              {myOfferings.map((offering, idx) => {
                 const sem = semesterForOffering(offering);
                 return (
-                  <li key={offering.id} className="px-5 py-3">
+                  <li key={offering.id} className="px-5 py-3 animate-slide-up" style={{ animationDelay: `${idx * 60}ms` }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-800">
@@ -231,8 +237,8 @@ export default function TeacherDashboard() {
             </div>
           ) : (
             <ul className="divide-y divide-gray-50">
-              {recentNotifications.map((n) => (
-                <li key={n.id} className="flex items-start gap-3 px-5 py-3">
+              {recentNotifications.map((n, idx) => (
+                <li key={n.id} className="flex items-start gap-3 px-5 py-3 animate-slide-up" style={{ animationDelay: `${idx * 60}ms` }}>
                   <span
                     className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
                       n.isRead ? 'bg-gray-200' : 'bg-primary-500'
@@ -262,7 +268,7 @@ export default function TeacherDashboard() {
             <Link
               key={to}
               to={to}
-              className="flex flex-col items-center gap-2 rounded-xl border border-gray-100 p-4 text-center transition-colors hover:border-gray-200 hover:bg-gray-50"
+              className="flex flex-col items-center gap-2 rounded-xl border border-gray-100 p-4 text-center transition-all duration-150 hover:border-gray-200 hover:bg-gray-50 hover:-translate-y-0.5 hover:shadow-sm active:scale-95"
             >
               <div className={`flex h-10 w-10 items-center justify-center rounded-full ${color}`}>
                 <Icon size={20} />

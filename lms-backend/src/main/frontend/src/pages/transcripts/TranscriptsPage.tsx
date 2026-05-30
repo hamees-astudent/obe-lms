@@ -351,7 +351,7 @@ function TranscriptCard({
   }
 
   return (
-    <div className="rounded-xl border bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+    <div className="rounded-xl border bg-white p-5 shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -430,8 +430,10 @@ function StudentView({ onView }: { onView: (id: string) => void }) {
           </p>
         </div>
       )}
-      {transcripts.map((t) => (
-        <TranscriptCard key={t.id} t={t} onView={onView} />
+      {transcripts.map((t, idx) => (
+        <div key={t.id} className="animate-slide-up" style={{ animationDelay: `${idx * 60}ms` }}>
+          <TranscriptCard t={t} onView={onView} />
+        </div>
       ))}
     </div>
   );
@@ -481,8 +483,10 @@ function ByStudentView({ onView }: { onView: (id: string) => void }) {
       {searchId && !transcriptsQ.isLoading && transcripts.length === 0 && (
         <p className="text-sm text-gray-500">No transcripts found for this student.</p>
       )}
-      {transcripts.map((t) => (
-        <TranscriptCard key={t.id} t={t} onView={onView} />
+      {transcripts.map((t, idx) => (
+        <div key={t.id} className="animate-slide-up" style={{ animationDelay: `${idx * 60}ms` }}>
+          <TranscriptCard t={t} onView={onView} />
+        </div>
       ))}
     </div>
   );
@@ -617,8 +621,10 @@ function BySemesterView({ onView }: { onView: (id: string) => void }) {
           {transcripts.length === 0 && (
             <p className="text-sm text-gray-500">No transcripts for this semester yet.</p>
           )}
-          {transcripts.map((t) => (
-            <TranscriptCard key={t.id} t={t} onView={onView} />
+          {transcripts.map((t, idx) => (
+            <div key={t.id} className="animate-slide-up" style={{ animationDelay: `${idx * 60}ms` }}>
+              <TranscriptCard t={t} onView={onView} />
+            </div>
           ))}
         </>
       )}

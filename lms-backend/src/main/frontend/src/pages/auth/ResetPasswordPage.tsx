@@ -71,7 +71,7 @@ export default function ResetPasswordPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-sm animate-slide-up">
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-600">
@@ -88,7 +88,7 @@ export default function ResetPasswordPage() {
 
         {/* Error */}
         {mutation.isError && (
-          <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 animate-slide-down">
             <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
             <div className="text-sm text-red-700">
               <p>{getErrorMessage(mutation.error)}</p>

@@ -97,10 +97,10 @@ function NotificationItem({
   return (
     <div
       onClick={() => { if (!n.isRead) onRead(n.id); }}
-      className={`flex gap-4 rounded-xl border p-4 transition-colors ${
+      className={`flex gap-4 rounded-xl border p-4 transition-all duration-150 ${
         n.isRead
-          ? 'bg-white hover:bg-gray-50'
-          : 'cursor-pointer border-primary-200 bg-primary-50 hover:bg-primary-100'
+          ? 'bg-white hover:bg-gray-50 hover:shadow-sm'
+          : 'cursor-pointer border-primary-200 bg-primary-50 hover:bg-primary-100 hover:shadow-sm'
       }`}
     >
       {/* Icon */}
@@ -194,7 +194,7 @@ export default function NotificationsPage() {
           {/* Unread filter toggle */}
           <button
             onClick={() => setUnreadOnly((v) => !v)}
-            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all duration-150 active:scale-95 ${
               unreadOnly
                 ? 'border-primary-400 bg-primary-50 text-primary-700'
                 : 'border-gray-300 text-gray-600 hover:bg-gray-50'
@@ -209,7 +209,7 @@ export default function NotificationsPage() {
             <button
               onClick={() => markAllMutation.mutate()}
               disabled={markAllMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-all duration-150 active:scale-95"
             >
               <CheckCheck className="h-4 w-4" />
               Mark all read
@@ -246,12 +246,13 @@ export default function NotificationsPage() {
 
       {allNotifications.length > 0 && (
         <div className="space-y-2">
-          {allNotifications.map((n) => (
-            <NotificationItem
-              key={n.id}
-              n={n}
-              onRead={(id) => markReadMutation.mutate(id)}
-            />
+          {allNotifications.map((n, idx) => (
+            <div key={n.id} className="animate-slide-up" style={{ animationDelay: `${Math.min(idx * 40, 400)}ms` }}>
+              <NotificationItem
+                n={n}
+                onRead={(id) => markReadMutation.mutate(id)}
+              />
+            </div>
           ))}
         </div>
       )}

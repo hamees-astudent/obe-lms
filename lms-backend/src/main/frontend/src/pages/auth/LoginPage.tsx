@@ -60,7 +60,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen">
       {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center bg-primary-700 px-12 text-white">
+      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center bg-primary-700 px-12 text-white animate-slide-in-left">
         <div className="max-w-sm text-center">
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
             <GraduationCap size={36} className="text-white" />
@@ -74,7 +74,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right panel — login form */}
-      <div className="flex flex-1 flex-col items-center justify-center px-4 py-12 bg-gray-50">
+      <div className="flex flex-1 flex-col items-center justify-center px-4 py-12 bg-gray-50 animate-slide-up">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="mb-8 flex flex-col items-center lg:hidden">
@@ -91,7 +91,7 @@ export default function LoginPage() {
 
           {/* Password-reset success banner */}
           {resetSuccess && (
-            <div className="mb-5 flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+            <div className="mb-5 flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 animate-slide-down">
               <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-green-600" />
               <p className="text-sm text-green-800">
                 Your password has been reset. Sign in with your new password.
@@ -101,7 +101,7 @@ export default function LoginPage() {
 
           {/* Error banner */}
           {mutation.isError && (
-            <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 animate-slide-down">
               <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
               <p className="text-sm text-red-700">{getErrorMessage(mutation.error)}</p>
             </div>

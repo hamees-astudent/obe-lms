@@ -28,12 +28,12 @@ export default function Header() {
         {/* Notification bell */}
         <Link
           to="/notifications"
-          className="relative rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+          className="relative rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-transform duration-150 hover:scale-110 active:scale-95"
           aria-label="Notifications"
         >
           <Bell size={20} />
           {!!unreadCount && unreadCount > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            <span className="absolute right-1 top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white animate-bounce-subtle">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
@@ -48,7 +48,7 @@ export default function Header() {
         {/* Logout */}
         <button
           onClick={handleLogout}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all duration-150 active:scale-95"
           aria-label="Log out"
         >
           <LogOut size={16} />

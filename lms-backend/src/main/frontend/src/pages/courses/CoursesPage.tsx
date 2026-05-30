@@ -30,7 +30,7 @@ function CourseCard({ card }: { card: CourseCardData }) {
   return (
     <Link
       to={`/courses/${card.pscId}`}
-      className="group flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+      className="group flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-1 hover:border-primary-200 active:scale-95"
     >
       <div className="mb-4 flex items-start justify-between">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
@@ -88,8 +88,10 @@ function CourseGrid({
         {title} · {cards.length} course{cards.length !== 1 ? 's' : ''}
       </p>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {cards.map((c) => (
-          <CourseCard key={c.pscId} card={c} />
+        {cards.map((c, idx) => (
+          <div key={c.pscId} className="animate-slide-up" style={{ animationDelay: `${idx * 50}ms` }}>
+            <CourseCard card={c} />
+          </div>
         ))}
       </div>
     </>

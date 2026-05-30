@@ -35,7 +35,7 @@ export default function ForgotPasswordPage() {
   if (submitted) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-        <div className="w-full max-w-sm text-center">
+        <div className="w-full max-w-sm text-center animate-scale-in">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
             <Send size={26} className="text-green-600" />
           </div>
@@ -69,7 +69,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-sm animate-slide-up">
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-600">
@@ -85,7 +85,7 @@ export default function ForgotPasswordPage() {
         </div>
 
         {mutation.isError && (
-          <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 animate-slide-down">
             <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
             <p className="text-sm text-red-700">
               Something went wrong. Please try again.

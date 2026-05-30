@@ -38,7 +38,7 @@ function SummaryCard({ pscId, courseCode, courseName, summary, loading }: Summar
   return (
     <Link
       to={`/attendance/${pscId}`}
-      className="group flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+      className="group flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-1 hover:border-primary-200 active:scale-95"
     >
       <div className="mb-3 flex items-start justify-between">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
@@ -125,14 +125,15 @@ function StudentLanding() {
               (offeringQueries[idx]?.isLoading ?? false) ||
               (summaryQueries[idx]?.isLoading ?? false);
             return (
-              <SummaryCard
-                key={e.pscId}
-                pscId={e.pscId}
-                courseCode={offering?.courseCode ?? '…'}
-                courseName={offering?.courseName ?? '…'}
-                summary={summary}
-                loading={loading}
-              />
+              <div key={e.pscId} className="animate-slide-up" style={{ animationDelay: `${idx * 50}ms` }}>
+                <SummaryCard
+                  pscId={e.pscId}
+                  courseCode={offering?.courseCode ?? '…'}
+                  courseName={offering?.courseName ?? '…'}
+                  summary={summary}
+                  loading={loading}
+                />
+              </div>
             );
           })}
         </div>
@@ -155,7 +156,7 @@ function ManageCard({ card }: { card: ManageCardData }) {
   return (
     <Link
       to={`/attendance/${card.pscId}`}
-      className="group flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+      className="group flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-1 hover:border-primary-200 active:scale-95"
     >
       <div className="mb-3 flex items-start justify-between">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
@@ -265,8 +266,10 @@ function ManageLanding() {
             {cards.length} course{cards.length !== 1 ? 's' : ''}
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {cards.map((c) => (
-              <ManageCard key={c.pscId} card={c} />
+            {cards.map((c, idx) => (
+              <div key={c.pscId} className="animate-slide-up" style={{ animationDelay: `${idx * 50}ms` }}>
+                <ManageCard card={c} />
+              </div>
             ))}
           </div>
         </>

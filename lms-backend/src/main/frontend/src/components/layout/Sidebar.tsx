@@ -37,7 +37,7 @@ export default function Sidebar() {
   );
 
   return (
-    <aside className="flex w-60 flex-col border-r border-gray-200 bg-white">
+    <aside className="flex w-60 flex-col border-r border-gray-200 bg-white animate-slide-in-left">
       {/* Logo */}
       <div className="flex h-16 items-center gap-2 border-b border-gray-100 px-6">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600">
@@ -55,10 +55,10 @@ export default function Sidebar() {
                 to={to}
                 className={({ isActive }) =>
                   [
-                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
                     isActive
-                      ? 'bg-primary-50 text-primary-700'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+                      ? 'bg-primary-50 text-primary-700 shadow-sm'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 hover:translate-x-0.5',
                   ].join(' ')
                 }
               >

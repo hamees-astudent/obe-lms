@@ -108,53 +108,59 @@ export default function StudentDashboard() {
 
       {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
-              <BookOpen size={20} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">
-                {enrollmentsQ.isLoading ? <Spinner size="sm" /> : enrollments.length}
-              </p>
-              <p className="text-sm text-gray-500">Enrolled Courses</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-600">
-              <GraduationCap size={20} />
-            </div>
-            <div>
-              {transcriptsQ.isLoading ? (
-                <Spinner size="sm" />
-              ) : latestTranscript ? (
+        <div className="animate-slide-up animation-delay-75">
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
+                <BookOpen size={20} />
+              </div>
+              <div>
                 <p className="text-2xl font-bold text-gray-900">
-                  {latestTranscript.cgpa.toFixed(2)}
+                  {enrollmentsQ.isLoading ? <Spinner size="sm" /> : enrollments.length}
                 </p>
-              ) : (
-                <p className="text-2xl font-bold text-gray-400">—</p>
-              )}
-              <p className="text-sm text-gray-500">CGPA</p>
+                <p className="text-sm text-gray-500">Enrolled Courses</p>
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
 
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
-              <Bell size={20} />
+        <div className="animate-slide-up animation-delay-150">
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-600">
+                <GraduationCap size={20} />
+              </div>
+              <div>
+                {transcriptsQ.isLoading ? (
+                  <Spinner size="sm" />
+                ) : latestTranscript ? (
+                  <p className="text-2xl font-bold text-gray-900">
+                    {latestTranscript.cgpa.toFixed(2)}
+                  </p>
+                ) : (
+                  <p className="text-2xl font-bold text-gray-400">—</p>
+                )}
+                <p className="text-sm text-gray-500">CGPA</p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">
-                {recentNotifications.filter((n) => !n.isRead).length}
-              </p>
-              <p className="text-sm text-gray-500">Unread Alerts</p>
+          </Card>
+        </div>
+
+        <div className="animate-slide-up animation-delay-300">
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+                <Bell size={20} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">
+                  {recentNotifications.filter((n) => !n.isRead).length}
+                </p>
+                <p className="text-sm text-gray-500">Unread Alerts</p>
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -186,7 +192,7 @@ export default function StudentDashboard() {
                 const offering = offeringQueries[idx]?.data;
                 const attendance = attendanceQueries[idx]?.data;
                 return (
-                  <li key={enr.id} className="px-5 py-3">
+                  <li key={enr.id} className="px-5 py-3 animate-slide-up" style={{ animationDelay: `${idx * 60}ms` }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         {offering ? (
@@ -281,8 +287,8 @@ export default function StudentDashboard() {
               <p className="px-5 py-4 text-sm text-gray-400">No notifications.</p>
             ) : (
               <ul className="divide-y divide-gray-50">
-                {recentNotifications.slice(0, 4).map((n) => (
-                  <li key={n.id} className="flex items-start gap-3 px-5 py-2.5">
+                {recentNotifications.slice(0, 4).map((n, idx) => (
+                  <li key={n.id} className="flex items-start gap-3 px-5 py-2.5 animate-slide-up" style={{ animationDelay: `${idx * 60}ms` }}>
                     <span
                       className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
                         n.isRead ? 'bg-gray-200' : 'bg-primary-500'

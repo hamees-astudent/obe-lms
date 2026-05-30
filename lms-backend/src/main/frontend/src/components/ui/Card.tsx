@@ -8,7 +8,7 @@ export default function Card({ children, className = '', padding = true }: CardP
   return (
     <div
       className={[
-        'rounded-xl border border-gray-200 bg-white shadow-sm',
+        'rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow duration-200',
         padding ? 'p-5' : '',
         className,
       ].join(' ')}

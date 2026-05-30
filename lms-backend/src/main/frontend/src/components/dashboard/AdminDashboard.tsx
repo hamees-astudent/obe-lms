@@ -117,27 +117,33 @@ export default function AdminDashboard() {
 
       {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard
-          label="Total Users"
-          value={usersCountQ.data?.totalElements ?? 0}
-          icon={Users}
-          color="bg-blue-100 text-blue-600"
-          loading={usersCountQ.isLoading}
-        />
-        <StatCard
-          label="Active Programs"
-          value={loading ? '' : activePrograms.length}
-          icon={BookOpen}
-          color="bg-indigo-100 text-indigo-600"
-          loading={programsQ.isLoading}
-        />
-        <StatCard
-          label="Active Semesters"
-          value={semesterQueries.some((q) => q.isLoading) ? '' : activeSemesterCount}
-          icon={GraduationCap}
-          color="bg-green-100 text-green-600"
-          loading={semesterQueries.some((q) => q.isLoading)}
-        />
+        <div className="animate-slide-up animation-delay-75">
+          <StatCard
+            label="Total Users"
+            value={usersCountQ.data?.totalElements ?? 0}
+            icon={Users}
+            color="bg-blue-100 text-blue-600"
+            loading={usersCountQ.isLoading}
+          />
+        </div>
+        <div className="animate-slide-up animation-delay-150">
+          <StatCard
+            label="Active Programs"
+            value={loading ? '' : activePrograms.length}
+            icon={BookOpen}
+            color="bg-indigo-100 text-indigo-600"
+            loading={programsQ.isLoading}
+          />
+        </div>
+        <div className="animate-slide-up animation-delay-300">
+          <StatCard
+            label="Active Semesters"
+            value={semesterQueries.some((q) => q.isLoading) ? '' : activeSemesterCount}
+            icon={GraduationCap}
+            color="bg-green-100 text-green-600"
+            loading={semesterQueries.some((q) => q.isLoading)}
+          />
+        </div>
       </div>
 
       {/* Programs overview */}
@@ -155,8 +161,8 @@ export default function AdminDashboard() {
             <p className="px-5 py-6 text-sm text-gray-400">No programs found.</p>
           ) : (
             <ul className="divide-y divide-gray-50">
-              {programs.slice(0, 6).map((prog) => (
-                <li key={prog.id} className="flex items-center justify-between px-5 py-3">
+              {programs.slice(0, 6).map((prog, idx) => (
+                <li key={prog.id} className="flex items-center justify-between px-5 py-3 animate-slide-up" style={{ animationDelay: `${idx * 50}ms` }}>
                   <div>
                     <p className="text-sm font-medium text-gray-800">{prog.name}</p>
                     <p className="text-xs text-gray-400">{prog.code} · {prog.durationYears} years</p>
@@ -190,8 +196,8 @@ export default function AdminDashboard() {
             <p className="px-5 py-6 text-sm text-gray-400">No users yet.</p>
           ) : (
             <ul className="divide-y divide-gray-50">
-              {recentUsers.map((u) => (
-                <li key={u.id} className="flex items-center justify-between px-5 py-3">
+              {recentUsers.map((u, idx) => (
+                <li key={u.id} className="flex items-center justify-between px-5 py-3 animate-slide-up" style={{ animationDelay: `${idx * 50}ms` }}>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-gray-800">{u.name}</p>
                     <p className="truncate text-xs text-gray-400">{u.email}</p>
@@ -217,7 +223,7 @@ export default function AdminDashboard() {
             <Link
               key={to}
               to={to}
-              className="flex flex-col items-center gap-2 rounded-xl border border-gray-100 p-4 text-center transition-colors hover:border-gray-200 hover:bg-gray-50"
+              className="flex flex-col items-center gap-2 rounded-xl border border-gray-100 p-4 text-center transition-all duration-150 hover:border-gray-200 hover:bg-gray-50 hover:-translate-y-0.5 hover:shadow-sm active:scale-95"
             >
               <div className={`flex h-10 w-10 items-center justify-center rounded-full ${color}`}>
                 <Icon size={20} />
