@@ -22,7 +22,7 @@ const createSchema = z.object({
   name:     z.string().min(1, 'Name is required').max(120),
   email:    z.string().email('Invalid email').max(180),
   password: z.string().min(8, 'Min 8 characters').max(128),
-  role:     z.enum(['STUDENT', 'TEACHER', 'ADMIN'] as const),
+  role:     z.enum(['STUDENT', 'TEACHER', 'ASSISTANT', 'ADMIN'] as const),
 });
 
 const editSchema = z.object({
@@ -34,7 +34,7 @@ type EditForm   = z.infer<typeof editSchema>;
 
 // ─── API calls ───────────────────────────────────────────────────────────────
 
-const ROLES: Role[] = ['STUDENT', 'TEACHER', 'ADMIN'];
+const ROLES: Role[] = ['STUDENT', 'TEACHER', 'ASSISTANT', 'ADMIN'];
 const PAGE_SIZE = 20;
 
 function roleBadge(role: Role) {

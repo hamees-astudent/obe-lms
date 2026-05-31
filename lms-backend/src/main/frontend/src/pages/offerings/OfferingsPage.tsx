@@ -230,7 +230,14 @@ export default function OfferingsPage() {
     queryKey: ['users-teachers'],
     queryFn: () => api.get('/admin/users', { params: { role: 'TEACHER', size: 200 } }).then((r) => r.data),
   });
-  const teachers = teacherPage?.content ?? [];
+  const { data: assistantPage } = useQuery<Page<UserSummaryResponse>>({
+    queryKey: ['users-assistants'],
+    queryFn: () => api.get('/admin/users', { params: { role: 'ASSISTANT', size: 200 } }).then((r) => r.data),
+  });
+  const teachers = [
+    ...(teacherPage?.content ?? []),
+    ...(assistantPage?.content ?? []),
+  ].sort((a, b) => a.name.localeCompare(b.name));
 
   const { data: studentPage } = useQuery<Page<UserSummaryResponse>>({
     queryKey: ['users-students'],
