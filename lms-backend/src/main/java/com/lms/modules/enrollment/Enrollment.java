@@ -33,6 +33,10 @@ public class Enrollment extends BaseEntity {
     @Column(name = "student_id", nullable = false)
     private UUID studentId;
 
+    /** TEACHER | ASSISTANT | STUDENT | ADMIN — role of this user within the course offering */
+    @Column(name = "course_role", nullable = false, length = 20)
+    private String courseRole = "STUDENT";
+
     /** ACTIVE | DROPPED | COMPLETED */
     @Column(nullable = false, length = 20)
     private String status = "ACTIVE";

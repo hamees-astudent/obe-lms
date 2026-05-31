@@ -72,7 +72,7 @@ function StudentLanding() {
   const enrollmentsQ = useQuery({
     queryKey: ['me', 'enrollments', 'active'],
     queryFn: () =>
-      api.get<EnrollmentResponse[]>('/me/enrollments?status=ENROLLED').then((r) => r.data),
+      api.get<EnrollmentResponse[]>('/me/enrollments?status=ACTIVE').then((r) => r.data),
   });
   const enrollments = enrollmentsQ.data ?? [];
 

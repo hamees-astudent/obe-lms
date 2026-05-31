@@ -30,7 +30,7 @@ public class EnrollmentService {
 
     @Transactional
     @CacheEvict(value = CacheNames.ENROLLMENT, key = "#studentId")
-    public EnrollmentResponse enroll(UUID pscId, UUID studentId) {
+    public EnrollmentResponse enroll(UUID pscId, UUID studentId, String courseRole) {
         // 1. Capacity check
         int maxCapacity = enrollmentRepository.findMaxCapacityByPscId(pscId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -70,6 +70,7 @@ public class EnrollmentService {
             enrollment.setStudentId(studentId);
         }
 
+        enrollment.setCourseRole(courseRole);
         enrollment = enrollmentRepository.save(enrollment);
         publishEvent(enrollment, EnrollmentEvent.Action.ENROLLED);
         return toResponse(enrollment);
@@ -157,6 +158,6 @@ public class EnrollmentService {
 
     private EnrollmentResponse toResponse(Enrollment e) {
         return new EnrollmentResponse(e.getId(), e.getPscId(), e.getStudentId(),
-                e.getStatus(), e.getEnrolledAt(), e.getDroppedAt(), e.getCreatedAt());
+                e.getCourseRole(), e.getStatus(), e.getEnrolledAt(), e.getDroppedAt(), e.getCreatedAt());
     }
 }

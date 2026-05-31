@@ -22,6 +22,7 @@ import type {
   EnrollmentResponse,
   Page,
   UUID,
+  Role,
 } from '@/types/api';
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -43,26 +44,51 @@ type UpdateForm = z.infer<typeof updateSchema>;
 
 // ─── Enrollment sub-panel ─────────────────────────────────────────────────────
 
+const COURSE_ROLES: Role[] = ['STUDENT', 'TEACHER', 'ASSISTANT', 'ADMIN'];
+
+const courseRoleBadgeVariant: Record<Role, 'success' | 'warning' | 'info' | 'danger'> = {
+  STUDENT:   'success',
+  TEACHER:   'warning',
+  ASSISTANT: 'info',
+  ADMIN:     'danger',
+};
+
 function EnrollmentPanel({
   offeringId,
-  students,
 }: {
   offeringId: UUID;
-  students: UserSummaryResponse[];
 }) {
   const qc = useQueryClient();
-  const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedCourseRole, setSelectedCourseRole] = useState<Role>('STUDENT');
 
   const { data: enrollments = [], isLoading } = useQuery<EnrollmentResponse[]>({
     queryKey: ['enrollments', offeringId],
     queryFn: () => api.get(`/offerings/${offeringId}/enrollments`).then((r) => r.data),
   });
 
+  // Fetch all user types inside the panel so each role is always available
+  const { data: teacherPage }    = useQuery<Page<UserSummaryResponse>>({ queryKey: ['users-teachers'],   queryFn: () => api.get('/admin/users', { params: { role: 'TEACHER',   size: 200 } }).then(r => r.data) });
+  const { data: assistantPage }  = useQuery<Page<UserSummaryResponse>>({ queryKey: ['users-assistants'], queryFn: () => api.get('/admin/users', { params: { role: 'ASSISTANT', size: 200 } }).then(r => r.data) });
+  const { data: studentPage }    = useQuery<Page<UserSummaryResponse>>({ queryKey: ['users-students'],   queryFn: () => api.get('/admin/users', { params: { role: 'STUDENT',   size: 500 } }).then(r => r.data) });
+  const { data: adminPage }      = useQuery<Page<UserSummaryResponse>>({ queryKey: ['users-admins'],     queryFn: () => api.get('/admin/users', { params: { role: 'ADMIN',     size: 200 } }).then(r => r.data) });
+
+  const allUsers: UserSummaryResponse[] = [
+    ...(teacherPage?.content   ?? []),
+    ...(assistantPage?.content ?? []),
+    ...(studentPage?.content   ?? []),
+    ...(adminPage?.content     ?? []),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+
   const invalidate = () => qc.invalidateQueries({ queryKey: ['enrollments', offeringId] });
 
   const enrollMut = useMutation({
-    mutationFn: () => api.post('/admin/enrollments', { pscId: offeringId, studentId: selectedStudentId }),
-    onSuccess: () => { invalidate(); setSelectedStudentId(''); },
+    mutationFn: () => api.post('/admin/enrollments', {
+      pscId: offeringId,
+      studentId: selectedUserId,
+      courseRole: selectedCourseRole,
+    }),
+    onSuccess: () => { invalidate(); setSelectedUserId(''); setSelectedCourseRole('STUDENT'); },
   });
 
   const dropMut = useMutation({
@@ -70,58 +96,74 @@ function EnrollmentPanel({
     onSuccess: () => invalidate(),
   });
 
-  // Students not yet enrolled (active enrollments)
-  const enrolledStudentIds = new Set(
-    enrollments.filter((e) => e.status === 'ENROLLED').map((e) => e.studentId),
+  // Users not yet actively enrolled
+  const enrolledUserIds = new Set(
+    enrollments.filter((e) => e.status === 'ACTIVE').map((e) => e.studentId),
   );
-  const unenrolledStudents = students.filter((s) => !enrolledStudentIds.has(s.id));
+  const unenrolledUsers = allUsers.filter((u) => !enrolledUserIds.has(u.id));
 
   return (
     <div className="space-y-3">
-      <h5 className="font-medium text-gray-700">Enrolled Students ({enrollments.filter((e) => e.status === 'ENROLLED').length})</h5>
+      <h5 className="font-medium text-gray-700">
+        Course Members ({enrollments.filter((e) => e.status === 'ACTIVE').length})
+      </h5>
 
-      {/* Enroll student */}
-      <div className="flex gap-2">
+      {/* Add user with role */}
+      <div className="flex gap-2 flex-wrap">
         <select
-          value={selectedStudentId}
-          onChange={(e) => setSelectedStudentId(e.target.value)}
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          value={selectedUserId}
+          onChange={(e) => setSelectedUserId(e.target.value)}
+          className="flex-1 min-w-[160px] rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
-          <option value="">Select student to enroll…</option>
-          {unenrolledStudents.map((s) => (
-            <option key={s.id} value={s.id}>{s.name} ({s.email})</option>
+          <option value="">Select user to add…</option>
+          {unenrolledUsers.map((u) => (
+            <option key={u.id} value={u.id}>{u.name} ({u.email}) [{u.role}]</option>
+          ))}
+        </select>
+        <select
+          value={selectedCourseRole}
+          onChange={(e) => setSelectedCourseRole(e.target.value as Role)}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          {COURSE_ROLES.map((r) => (
+            <option key={r} value={r}>{r}</option>
           ))}
         </select>
         <Button
           size="sm"
-          disabled={!selectedStudentId}
+          disabled={!selectedUserId}
           loading={enrollMut.isPending}
           onClick={() => enrollMut.mutate()}
         >
-          <UserPlus size={14} className="mr-1" /> Enroll
+          <UserPlus size={14} className="mr-1" /> Add
         </Button>
       </div>
 
       {isLoading ? (
         <div className="flex justify-center py-3"><Spinner /></div>
       ) : enrollments.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-2">No students enrolled.</p>
+        <p className="text-xs text-gray-400 text-center py-2">No members added yet.</p>
       ) : (
         <div className="space-y-1 max-h-40 overflow-y-auto">
           {enrollments.map((e) => {
-            const student = students.find((s) => s.id === e.studentId);
+            const user = allUsers.find((u) => u.id === e.studentId);
             return (
               <div key={e.id} className="flex items-center justify-between rounded bg-gray-50 px-3 py-1.5 text-sm">
-                <span className="text-gray-800">{student?.name ?? e.studentId}</span>
+                <span className="text-gray-800">{user?.name ?? e.studentId}</span>
                 <div className="flex items-center gap-2">
-                  <Badge variant={e.status === 'ENROLLED' ? 'success' : e.status === 'DROPPED' ? 'danger' : 'info'}>
+                  {e.courseRole && (
+                    <Badge variant={courseRoleBadgeVariant[e.courseRole as Role] ?? 'info'}>
+                      {e.courseRole}
+                    </Badge>
+                  )}
+                  <Badge variant={e.status === 'ACTIVE' ? 'success' : e.status === 'DROPPED' ? 'danger' : 'info'}>
                     {e.status}
                   </Badge>
-                  {e.status === 'ENROLLED' && (
+                  {e.status === 'ACTIVE' && (
                     <button
                       onClick={() => dropMut.mutate(e.id)}
                       className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition"
-                      title="Drop enrollment"
+                      title="Remove from course"
                     >
                       <UserMinus size={13} />
                     </button>
@@ -141,12 +183,10 @@ function EnrollmentPanel({
 function OfferingRow({
   offering,
   teachers,
-  students,
   onEdit,
 }: {
   offering: OfferingSummaryResponse;
   teachers: UserSummaryResponse[];
-  students: UserSummaryResponse[];
   onEdit: (o: OfferingSummaryResponse) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -190,7 +230,7 @@ function OfferingRow({
 
       {expanded && (
         <div className="border-t border-gray-100 px-5 py-4">
-          <EnrollmentPanel offeringId={offering.id} students={students} />
+          <EnrollmentPanel offeringId={offering.id} />
         </div>
       )}
     </div>
@@ -238,12 +278,6 @@ export default function OfferingsPage() {
     ...(teacherPage?.content ?? []),
     ...(assistantPage?.content ?? []),
   ].sort((a, b) => a.name.localeCompare(b.name));
-
-  const { data: studentPage } = useQuery<Page<UserSummaryResponse>>({
-    queryKey: ['users-students'],
-    queryFn: () => api.get('/admin/users', { params: { role: 'STUDENT', size: 500 } }).then((r) => r.data),
-  });
-  const students = studentPage?.content ?? [];
 
   const { data: coursesPage } = useQuery<Page<CourseSummaryResponse>>({
     queryKey: ['courses-all'],
@@ -344,7 +378,6 @@ export default function OfferingsPage() {
               key={o.id}
               offering={o}
               teachers={teachers}
-              students={students}
               onEdit={openEdit}
             />
           ))}

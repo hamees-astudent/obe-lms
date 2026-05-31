@@ -134,6 +134,7 @@ export interface CreateOfferingBody {
 export interface CreateEnrollmentBody {
   pscId: UUID;
   studentId: UUID;
+  courseRole: Role;
 }
 
 export interface SemesterResponse {
@@ -183,7 +184,8 @@ export interface EnrollmentResponse {
   id: UUID;
   pscId: UUID;
   studentId: UUID;
-  status: 'ENROLLED' | 'DROPPED' | 'COMPLETED';
+  courseRole: Role;
+  status: 'ACTIVE' | 'DROPPED' | 'COMPLETED';
   enrolledAt: string;
   droppedAt?: string;
   createdAt: string;

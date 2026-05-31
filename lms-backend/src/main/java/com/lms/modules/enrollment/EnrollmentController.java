@@ -28,7 +28,7 @@ public class EnrollmentController {
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('ADMIN')")
     public EnrollmentResponse adminEnroll(@Valid @RequestBody AdminEnrollRequest req) {
-        return enrollmentService.enroll(req.pscId(), req.studentId());
+        return enrollmentService.enroll(req.pscId(), req.studentId(), req.courseRole());
     }
 
     @DeleteMapping("/api/admin/enrollments/{id}")
@@ -47,7 +47,7 @@ public class EnrollmentController {
     public EnrollmentResponse selfEnroll(
             @Valid @RequestBody SelfEnrollRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return enrollmentService.enroll(req.pscId(), principal.getId());
+        return enrollmentService.enroll(req.pscId(), principal.getId(), "STUDENT");
     }
 
     @DeleteMapping("/api/enrollments/{id}")

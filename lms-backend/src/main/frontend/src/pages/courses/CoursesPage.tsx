@@ -106,7 +106,7 @@ function StudentCourses() {
     queryKey: ['me', 'enrollments', 'active'],
     queryFn: () =>
       api
-        .get<EnrollmentResponse[]>('/me/enrollments?status=ENROLLED')
+        .get<EnrollmentResponse[]>('/me/enrollments?status=ACTIVE')
         .then((r) => r.data),
   });
   const enrollments = enrollmentsQ.data ?? [];

@@ -93,7 +93,7 @@ function SessionSheet({ session, pscId, isAdmin }: SheetProps) {
     queryKey: ['offerings', pscId, 'enrollments'],
     queryFn: () =>
       api
-        .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=ENROLLED`)
+        .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=ACTIVE`)
         .then((r) => r.data),
   });
   const enrollments = enrollmentsQ.data ?? [];
@@ -410,7 +410,7 @@ function ClassRosterView({ pscId, isAdmin }: { pscId: UUID; isAdmin: boolean }) 
     queryKey: ['offerings', pscId, 'enrollments'],
     queryFn: () =>
       api
-        .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=ENROLLED`)
+        .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=ACTIVE`)
         .then((r) => r.data),
   });
   const enrollments = enrollmentsQ.data ?? [];

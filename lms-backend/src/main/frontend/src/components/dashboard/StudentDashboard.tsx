@@ -49,7 +49,7 @@ export default function StudentDashboard() {
     queryKey: ['me', 'enrollments', 'active'],
     queryFn: () =>
       api
-        .get<EnrollmentResponse[]>('/me/enrollments?status=ENROLLED')
+        .get<EnrollmentResponse[]>('/me/enrollments?status=ACTIVE')
         .then((r) => r.data),
   });
   const enrollments: EnrollmentResponse[] = enrollmentsQ.data ?? [];

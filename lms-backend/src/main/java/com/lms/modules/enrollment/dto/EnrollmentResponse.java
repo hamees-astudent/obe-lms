@@ -7,6 +7,7 @@ public record EnrollmentResponse(
         UUID id,
         UUID pscId,
         UUID studentId,
+        String courseRole,
         String status,
         LocalDateTime enrolledAt,
         LocalDateTime droppedAt,
