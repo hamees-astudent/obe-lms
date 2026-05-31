@@ -27,7 +27,6 @@ import type {
   AttendanceRecordResponse,
   AttendanceSummaryResponse,
   EnrollmentResponse,
-  UserDetailResponse,
   AttendanceStatus,
 } from '@/types/api';
 
@@ -86,7 +85,7 @@ interface SheetProps {
   isAdmin: boolean;
 }
 
-function SessionSheet({ session, pscId, isAdmin }: SheetProps) {
+function SessionSheet({ session, pscId }: SheetProps) {
   const queryClient = useQueryClient();
 
   const enrollmentsQ = useQuery({
@@ -96,7 +95,8 @@ function SessionSheet({ session, pscId, isAdmin }: SheetProps) {
         .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=ACTIVE`)
         .then((r) => r.data),
   });
-  const enrollments = enrollmentsQ.data ?? [];
+  // Only STUDENT-role enrollments are tracked for attendance
+  const enrollments = (enrollmentsQ.data ?? []).filter((e) => e.courseRole === 'STUDENT');
 
   const recordsQ = useQuery({
     queryKey: ['sessions', session.id, 'records'],
@@ -106,30 +106,6 @@ function SessionSheet({ session, pscId, isAdmin }: SheetProps) {
         .then((r) => r.data),
   });
   const records = recordsQ.data ?? [];
-
-  // Admin only: fetch student names in parallel
-  const nameQueries = useQueries({
-    queries: (isAdmin ? enrollments : []).map((e) => ({
-      queryKey: ['admin', 'users', e.studentId],
-      queryFn: () =>
-        api.get<UserDetailResponse>(`/admin/users/${e.studentId}`).then((r) => r.data),
-      enabled: isAdmin && enrollments.length > 0,
-      retry: false,
-      staleTime: 5 * 60 * 1000,
-    })),
-  });
-
-  const nameMap = useMemo(() => {
-    const map = new Map<UUID, string>();
-    if (isAdmin) {
-      nameQueries.forEach((q, idx) => {
-        const id = enrollments[idx]?.studentId;
-        if (id && q.data?.name) map.set(id, q.data.name);
-      });
-    }
-    return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, nameQueries, enrollments]);
 
   const recordMap = useMemo(
     () => new Map<UUID, AttendanceRecordResponse>(records.map((r) => [r.studentId, r])),
@@ -245,16 +221,14 @@ function SessionSheet({ session, pscId, isAdmin }: SheetProps) {
             <tbody>
               {enrollments.map((e) => {
                 const record = recordMap.get(e.studentId);
-                const name = nameMap.get(e.studentId);
-                const displayName = name ?? `${e.studentId.slice(0, 8)}…`;
+                const displayName = e.studentName ?? `${e.studentId.slice(0, 8)}…`;
                 const isMarking = markMutation.isPending && markingId === e.studentId;
 
                 return (
                   <tr key={e.studentId} className="border-b border-gray-50 last:border-0">
                     <td className="px-4 py-2.5">
                       <span
-                        className="font-mono text-xs text-gray-700"
-                        title={isAdmin ? undefined : e.studentId}
+                        className="text-sm text-gray-700"
                       >
                         {displayName}
                       </span>
@@ -405,7 +379,7 @@ function CreateSessionForm({ pscId, onClose }: CreateSessionFormProps) {
 // ---------------------------------------------------------------------------
 // Class Roster — per-student attendance summary (teacher/admin)
 // ---------------------------------------------------------------------------
-function ClassRosterView({ pscId, isAdmin }: { pscId: UUID; isAdmin: boolean }) {
+function ClassRosterView({ pscId }: { pscId: UUID; isAdmin: boolean }) {
   const enrollmentsQ = useQuery({
     queryKey: ['offerings', pscId, 'enrollments'],
     queryFn: () =>
@@ -413,7 +387,8 @@ function ClassRosterView({ pscId, isAdmin }: { pscId: UUID; isAdmin: boolean }) 
         .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=ACTIVE`)
         .then((r) => r.data),
   });
-  const enrollments = enrollmentsQ.data ?? [];
+  // Only STUDENT-role enrollments are tracked for attendance
+  const enrollments = (enrollmentsQ.data ?? []).filter((e) => e.courseRole === 'STUDENT');
 
   const summaryQueries = useQueries({
     queries: enrollments.map((e) => ({
@@ -426,29 +401,6 @@ function ClassRosterView({ pscId, isAdmin }: { pscId: UUID; isAdmin: boolean }) 
       retry: false,
     })),
   });
-
-  const nameQueries = useQueries({
-    queries: (isAdmin ? enrollments : []).map((e) => ({
-      queryKey: ['admin', 'users', e.studentId],
-      queryFn: () =>
-        api.get<UserDetailResponse>(`/admin/users/${e.studentId}`).then((r) => r.data),
-      enabled: isAdmin && enrollments.length > 0,
-      retry: false,
-      staleTime: 5 * 60 * 1000,
-    })),
-  });
-
-  const nameMap = useMemo(() => {
-    const map = new Map<UUID, string>();
-    if (isAdmin) {
-      nameQueries.forEach((q, idx) => {
-        const id = enrollments[idx]?.studentId;
-        if (id && q.data?.name) map.set(id, q.data.name);
-      });
-    }
-    return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, nameQueries, enrollments]);
 
   if (enrollmentsQ.isLoading) {
     return (
@@ -469,7 +421,7 @@ function ClassRosterView({ pscId, isAdmin }: { pscId: UUID; isAdmin: boolean }) 
 
   const rows = enrollments.map((e, idx) => ({
     studentId: e.studentId,
-    name: nameMap.get(e.studentId) ?? null,
+    name: e.studentName ?? null,
     summary: summaryQueries[idx]?.data,
     loading: summaryQueries[idx]?.isLoading ?? false,
   }));

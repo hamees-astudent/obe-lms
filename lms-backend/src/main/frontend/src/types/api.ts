@@ -184,6 +184,7 @@ export interface EnrollmentResponse {
   id: UUID;
   pscId: UUID;
   studentId: UUID;
+  studentName?: string;
   courseRole: Role;
   status: 'ACTIVE' | 'DROPPED' | 'COMPLETED';
   enrolledAt: string;

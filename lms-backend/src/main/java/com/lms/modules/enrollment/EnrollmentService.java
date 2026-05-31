@@ -15,7 +15,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -117,7 +119,14 @@ public class EnrollmentService {
         List<Enrollment> rows = (status != null)
                 ? enrollmentRepository.findAllByPscIdAndStatus(pscId, status)
                 : enrollmentRepository.findAllByPscId(pscId);
-        return rows.stream().map(this::toResponse).toList();
+        Map<UUID, String> nameMap = enrollmentRepository.findStudentNamesByPscId(pscId)
+                .stream()
+                .collect(Collectors.toMap(
+                        v -> UUID.fromString(v.getStudentId()),
+                        StudentNameView::getStudentName));
+        return rows.stream()
+                .map(e -> toResponse(e, nameMap.get(e.getStudentId())))
+                .toList();
     }
 
     public EnrollmentResponse getEnrollment(UUID id) {
@@ -157,7 +166,11 @@ public class EnrollmentService {
     }
 
     private EnrollmentResponse toResponse(Enrollment e) {
-        return new EnrollmentResponse(e.getId(), e.getPscId(), e.getStudentId(),
+        return toResponse(e, null);
+    }
+
+    private EnrollmentResponse toResponse(Enrollment e, String studentName) {
+        return new EnrollmentResponse(e.getId(), e.getPscId(), e.getStudentId(), studentName,
                 e.getCourseRole(), e.getStatus(), e.getEnrolledAt(), e.getDroppedAt(), e.getCreatedAt());
     }
 }
