@@ -53,11 +53,22 @@ export interface UserResponse {
 }
 
 export interface CreateUserRequest {
+  name: string;
   email: string;
-  firstName: string;
-  lastName: string;
-  role: Role;
   password: string;
+  role: Role;
+}
+
+export interface UpdateUserRequest {
+  name: string;
+}
+
+export interface ChangeRoleRequest {
+  role: Role;
+}
+
+export interface ChangeStatusRequest {
+  status: 'ACTIVE' | 'INACTIVE';
 }
 
 // ---------------------------------------------------------------------------
@@ -72,13 +83,57 @@ export interface ProgramSummaryResponse {
   createdAt: string;
 }
 
-export interface ProgramResponse {
+export interface ProgramDetailResponse {
   id: UUID;
   code: string;
   name: string;
   description?: string;
   durationYears: number;
-  active: boolean;
+  status: string;
+  createdAt: string;
+  plos: PloResponse[];
+}
+
+export interface CreateProgramRequest {
+  name: string;
+  code: string;
+  description?: string;
+  durationYears: number;
+}
+
+export interface PloResponse {
+  id: UUID;
+  programId: UUID;
+  code: string;
+  title: string;
+  description?: string;
+  orderIndex: number;
+  createdAt: string;
+}
+
+export interface CreatePloRequest {
+  code: string;
+  title: string;
+  description?: string;
+  orderIndex: number;
+}
+
+export interface CreateSemesterRequest {
+  name: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+}
+
+export interface CreateOfferingBody {
+  semesterId: UUID;
+  courseId: UUID;
+  teacherId: UUID;
+  maxCapacity: number;
+}
+
+export interface CreateEnrollmentBody {
+  pscId: UUID;
+  studentId: UUID;
 }
 
 export interface SemesterResponse {
@@ -88,7 +143,9 @@ export interface SemesterResponse {
   name: string;
   startDate: string;
   endDate: string;
-  status: 'UPCOMING' | 'ACTIVE' | 'COMPLETED';
+  status: 'OPEN' | 'CLOSED';
+  closedAt?: string;
+  closedById?: UUID;
   createdAt: string;
 }
 
@@ -431,17 +488,33 @@ export interface GradingScaleResponse {
   id: UUID;
   name: string;
   programId?: UUID;
-  programName?: string;
-  active: boolean;
+  isDefault: boolean;
   entries: GradingScaleEntryResponse[];
+  createdAt: string;
 }
 
 export interface GradingScaleEntryResponse {
   id: UUID;
-  letterGrade: string;
+  scaleId: UUID;
+  gradeLetter: string;
   minPercentage: number;
   maxPercentage: number;
   gradePoints: number;
+  orderIndex: number;
+}
+
+export interface CreateGradingScaleRequest {
+  name: string;
+  programId?: UUID;
+  isDefault?: boolean;
+}
+
+export interface AddScaleEntryRequest {
+  gradeLetter: string;
+  minPercentage: number;
+  maxPercentage: number;
+  gradePoints: number;
+  orderIndex: number;
 }
 
 // ---------------------------------------------------------------------------

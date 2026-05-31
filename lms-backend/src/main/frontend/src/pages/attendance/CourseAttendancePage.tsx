@@ -12,6 +12,7 @@ import {
   Unlock,
   CalendarCheck,
   Users,
+  BarChart2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -402,6 +403,177 @@ function CreateSessionForm({ pscId, onClose }: CreateSessionFormProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Class Roster — per-student attendance summary (teacher/admin)
+// ---------------------------------------------------------------------------
+function ClassRosterView({ pscId, isAdmin }: { pscId: UUID; isAdmin: boolean }) {
+  const enrollmentsQ = useQuery({
+    queryKey: ['offerings', pscId, 'enrollments'],
+    queryFn: () =>
+      api
+        .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=ENROLLED`)
+        .then((r) => r.data),
+  });
+  const enrollments = enrollmentsQ.data ?? [];
+
+  const summaryQueries = useQueries({
+    queries: enrollments.map((e) => ({
+      queryKey: ['offerings', pscId, 'attendance', e.studentId],
+      queryFn: () =>
+        api
+          .get<AttendanceSummaryResponse>(`/offerings/${pscId}/attendance/${e.studentId}`)
+          .then((r) => r.data),
+      enabled: enrollments.length > 0,
+      retry: false,
+    })),
+  });
+
+  const nameQueries = useQueries({
+    queries: (isAdmin ? enrollments : []).map((e) => ({
+      queryKey: ['admin', 'users', e.studentId],
+      queryFn: () =>
+        api.get<UserDetailResponse>(`/admin/users/${e.studentId}`).then((r) => r.data),
+      enabled: isAdmin && enrollments.length > 0,
+      retry: false,
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+
+  const nameMap = useMemo(() => {
+    const map = new Map<UUID, string>();
+    if (isAdmin) {
+      nameQueries.forEach((q, idx) => {
+        const id = enrollments[idx]?.studentId;
+        if (id && q.data?.name) map.set(id, q.data.name);
+      });
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, nameQueries, enrollments]);
+
+  if (enrollmentsQ.isLoading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (enrollments.length === 0) {
+    return (
+      <div className="flex flex-col items-center rounded-xl border border-dashed border-gray-200 py-14 text-center">
+        <Users size={36} className="mb-3 text-gray-300" />
+        <p className="text-sm text-gray-400">No enrolled students.</p>
+      </div>
+    );
+  }
+
+  const rows = enrollments.map((e, idx) => ({
+    studentId: e.studentId,
+    name: nameMap.get(e.studentId) ?? null,
+    summary: summaryQueries[idx]?.data,
+    loading: summaryQueries[idx]?.isLoading ?? false,
+  }));
+
+  // Sort: lowest attendance % first so at-risk students appear on top
+  const sorted = [...rows].sort((a, b) => {
+    const pa = a.summary?.percentage ?? 100;
+    const pb = b.summary?.percentage ?? 100;
+    return pa - pb;
+  });
+
+  const atRisk = sorted.filter((r) => r.summary && r.summary.percentage < 75).length;
+
+  return (
+    <div className="space-y-4">
+      {atRisk > 0 && (
+        <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          <BarChart2 size={15} />
+          <span>
+            <strong>{atRisk}</strong> student{atRisk !== 1 ? 's' : ''} below the 75%
+            attendance threshold.
+          </span>
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-100 bg-gray-50">
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">
+                Student
+              </th>
+              <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500">
+                Attended
+              </th>
+              <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500">
+                Total
+              </th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">
+                Rate
+              </th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">
+                Progress
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row) => (
+              <tr
+                key={row.studentId}
+                className="border-b border-gray-50 last:border-0 hover:bg-gray-50"
+              >
+                <td className="px-4 py-2.5">
+                  {row.name ? (
+                    <span className="font-medium text-gray-900">{row.name}</span>
+                  ) : (
+                    <span className="font-mono text-xs text-gray-500">
+                      {row.studentId.slice(0, 12)}…
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-center font-semibold text-gray-700">
+                  {row.loading ? '…' : (row.summary?.attended ?? '—')}
+                </td>
+                <td className="px-4 py-2.5 text-center text-gray-500">
+                  {row.loading ? '…' : (row.summary?.total ?? '—')}
+                </td>
+                <td className="px-4 py-2.5">
+                  {row.loading ? (
+                    <Spinner size="sm" />
+                  ) : row.summary ? (
+                    <PercentBadge pct={row.summary.percentage} />
+                  ) : (
+                    <span className="text-xs text-gray-300">N/A</span>
+                  )}
+                </td>
+                <td className="px-4 py-2.5">
+                  {row.summary && (
+                    <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className={`h-2 rounded-full ${
+                          row.summary.percentage >= 85
+                            ? 'bg-green-500'
+                            : row.summary.percentage >= 75
+                              ? 'bg-amber-400'
+                              : 'bg-red-500'
+                        }`}
+                        style={{
+                          width: `${Math.min(row.summary.percentage, 100)}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Teacher / Admin view — session list + attendance sheet
 // ---------------------------------------------------------------------------
 interface ManageViewProps {
@@ -410,6 +582,7 @@ interface ManageViewProps {
 }
 
 function ManageView({ pscId, isAdmin }: ManageViewProps) {
+  const [activeTab, setActiveTab] = useState<'sessions' | 'roster'>('sessions');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [expandedSessionId, setExpandedSessionId] = useState<UUID | null>(null);
 
@@ -425,16 +598,44 @@ function ManageView({ pscId, isAdmin }: ManageViewProps) {
     (a, b) => new Date(b.sessionDate).getTime() - new Date(a.sessionDate).getTime(),
   );
 
-  if (sessionsQ.isLoading) {
-    return (
-      <div className="flex justify-center py-16">
-        <Spinner />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1 w-fit">
+        <button
+          onClick={() => setActiveTab('sessions')}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            activeTab === 'sessions'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <CalendarCheck size={14} />
+          Sessions
+        </button>
+        <button
+          onClick={() => setActiveTab('roster')}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            activeTab === 'roster'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <BarChart2 size={14} />
+          Class Roster
+        </button>
+      </div>
+
+      {/* Roster tab */}
+      {activeTab === 'roster' && <ClassRosterView pscId={pscId} isAdmin={isAdmin} />}
+
+      {/* Sessions tab */}
+      {activeTab === 'sessions' && (
+      <>
+      {sessionsQ.isLoading ? (
+        <div className="flex justify-center py-16"><Spinner /></div>
+      ) : (
+      <>
       {/* Actions bar */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">
@@ -518,6 +719,10 @@ function ManageView({ pscId, isAdmin }: ManageViewProps) {
             );
           })}
         </div>
+      )}
+      </>
+      )}
+      </>
       )}
     </div>
   );

@@ -34,6 +34,7 @@ import type {
   QuizResponse,
   QuizQuestionResponse,
   QuizSubmissionResponse,
+  CloMappingResponse,
   SubmissionType,
   UploadedFileResponse,
 } from '@/types/api';
@@ -549,6 +550,7 @@ interface AssignmentCardProps {
   assignment: AssignmentResponse;
   isTeacher: boolean;
   pscId: UUID;
+  courseId?: UUID;
   highlighted?: boolean;
   onEdit: (a: AssignmentResponse) => void;
 }
@@ -557,6 +559,7 @@ function AssignmentCard({
   assignment,
   isTeacher,
   pscId,
+  courseId,
   highlighted,
   onEdit,
 }: AssignmentCardProps) {
@@ -675,6 +678,204 @@ function AssignmentCard({
           assignment={assignment}
           onClose={() => setShowSubmitModal(false)}
         />
+      )}
+      {isTeacher && courseId && (
+        <CloMappingsPanel
+          assessmentId={assignment.id}
+          assessmentType="assignments"
+          courseId={courseId}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// CLO MAPPINGS PANEL (teacher / admin)
+// ============================================================================
+
+interface LocalCloItem {
+  id: UUID;
+  courseId: UUID;
+  code: string;
+  title: string;
+  description?: string;
+  orderIndex: number;
+  createdAt: string;
+}
+
+function CloMappingsPanel({
+  assessmentId,
+  assessmentType,
+  courseId,
+}: {
+  assessmentId: UUID;
+  assessmentType: 'assignments' | 'quizzes';
+  courseId: UUID;
+}) {
+  const queryClient = useQueryClient();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedCloId, setSelectedCloId] = useState('');
+  const [weight, setWeight] = useState('1');
+
+  const closQ = useQuery({
+    queryKey: ['courses', courseId, 'clos'],
+    queryFn: () =>
+      api.get<LocalCloItem[]>(`/courses/${courseId}/clos`).then((r) => r.data),
+    enabled: !!courseId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const mappingsQ = useQuery({
+    queryKey: [assessmentType, assessmentId, 'clo-mappings'],
+    queryFn: () =>
+      api
+        .get<CloMappingResponse[]>(`/${assessmentType}/${assessmentId}/clo-mappings`)
+        .then((r) => r.data),
+  });
+
+  const addMutation = useMutation({
+    mutationFn: ({ cloId, weight: w }: { cloId: UUID; weight: number }) =>
+      api.post(`/admin/${assessmentType}/${assessmentId}/clo-mappings`, {
+        cloId,
+        weight: w,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [assessmentType, assessmentId, 'clo-mappings'],
+      });
+      setShowAddForm(false);
+      setSelectedCloId('');
+      setWeight('1');
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (cloId: UUID) =>
+      api.delete(`/admin/${assessmentType}/${assessmentId}/clo-mappings/${cloId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [assessmentType, assessmentId, 'clo-mappings'],
+      });
+    },
+  });
+
+  const allClos = closQ.data ?? [];
+  const mappings = mappingsQ.data ?? [];
+  const mappedCloIds = new Set(mappings.map((m) => m.cloId));
+  const availableClos = allClos.filter((c) => !mappedCloIds.has(c.id));
+  const getCloInfo = (cloId: UUID) => allClos.find((c) => c.id === cloId);
+
+  return (
+    <div className="mt-3 border-t border-gray-100 pt-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          CLO Mappings
+        </span>
+        {!showAddForm && availableClos.length > 0 && (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800"
+          >
+            <Plus size={12} />
+            Add
+          </button>
+        )}
+      </div>
+
+      {mappingsQ.isLoading ? (
+        <Spinner size="sm" />
+      ) : mappings.length === 0 && !showAddForm ? (
+        <p className="text-xs italic text-gray-400">No CLO mappings yet.</p>
+      ) : (
+        <div className="space-y-1">
+          {mappings.map((m) => {
+            const clo = getCloInfo(m.cloId);
+            return (
+              <div
+                key={m.cloId}
+                className="flex items-center justify-between rounded-md bg-blue-50 px-2.5 py-1.5"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="flex-shrink-0 text-xs font-semibold text-blue-700">
+                    {clo?.code ?? `${m.cloId.slice(0, 8)}…`}
+                  </span>
+                  {clo && (
+                    <span className="truncate text-xs text-blue-600">{clo.title}</span>
+                  )}
+                </div>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <span className="text-xs text-blue-500">w: {m.weight}</span>
+                  <button
+                    onClick={() => removeMutation.mutate(m.cloId)}
+                    disabled={removeMutation.isPending}
+                    className="rounded p-0.5 text-blue-400 hover:text-red-500"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showAddForm && (
+        <div className="mt-2 flex items-end gap-2">
+          <div className="flex-1">
+            <select
+              value={selectedCloId}
+              onChange={(e) => setSelectedCloId(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              <option value="">Select CLO…</option>
+              {availableClos
+                .slice()
+                .sort((a, b) => a.orderIndex - b.orderIndex)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.code} — {c.title}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="w-20">
+            <input
+              type="number"
+              min="0.01"
+              max="1"
+              step="0.01"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              placeholder="Weight"
+              className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
+          </div>
+          <Button
+            size="sm"
+            loading={addMutation.isPending}
+            disabled={!selectedCloId || !weight}
+            onClick={() =>
+              addMutation.mutate({
+                cloId: selectedCloId as UUID,
+                weight: parseFloat(weight),
+              })
+            }
+          >
+            Add
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setShowAddForm(false);
+              setSelectedCloId('');
+              setWeight('1');
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -1324,11 +1525,12 @@ interface QuizCardProps {
   quiz: QuizResponse;
   isTeacher: boolean;
   pscId: UUID;
+  courseId?: UUID;
   highlighted?: boolean;
   onEdit: (q: QuizResponse) => void;
 }
 
-function QuizCard({ quiz, isTeacher, pscId, highlighted, onEdit }: QuizCardProps) {
+function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: QuizCardProps) {
   const queryClient = useQueryClient();
   const [showQuestions, setShowQuestions] = useState(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
@@ -1527,6 +1729,13 @@ function QuizCard({ quiz, isTeacher, pscId, highlighted, onEdit }: QuizCardProps
           onClose={() => setShowPlayer(false)}
         />
       )}
+      {isTeacher && courseId && (
+        <CloMappingsPanel
+          assessmentId={quiz.id}
+          assessmentType="quizzes"
+          courseId={courseId}
+        />
+      )}
     </div>
   );
 }
@@ -1685,6 +1894,7 @@ export default function CourseAssessmentPage() {
                       assignment={a}
                       isTeacher={isTeacher}
                       pscId={pscId}
+                      courseId={offering?.courseId}
                       highlighted={isHighlighted}
                       onEdit={setEditingAssignment}
                     />
@@ -1726,6 +1936,7 @@ export default function CourseAssessmentPage() {
                       quiz={q}
                       isTeacher={isTeacher}
                       pscId={pscId}
+                      courseId={offering?.courseId}
                       highlighted={isHighlighted}
                       onEdit={setEditingQuiz}
                     />

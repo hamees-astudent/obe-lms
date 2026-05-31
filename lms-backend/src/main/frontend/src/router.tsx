@@ -24,7 +24,11 @@ const CourseAssessmentPage    = lazy(() => import('@/pages/assessment/CourseAsse
 const TranscriptsPage     = lazy(() => import('@/pages/transcripts/TranscriptsPage'));
 const NotificationsPage   = lazy(() => import('@/pages/notifications/NotificationsPage'));
 const UsersPage           = lazy(() => import('@/pages/users/UsersPage'));
-const NotFoundPage        = lazy(() => import('@/pages/NotFoundPage'));
+const ProgramsPage        = lazy(() => import('@/pages/programs/ProgramsPage'));
+const OfferingsPage       = lazy(() => import('@/pages/offerings/OfferingsPage'));
+const GradingScalesPage     = lazy(() => import('@/pages/grading/GradingScalesPage'));
+const CoursesCatalogPage    = lazy(() => import('@/pages/courses/CoursesCatalogPage'));
+const NotFoundPage          = lazy(() => import('@/pages/NotFoundPage'));
 
 // ─── Guards ─────────────────────────────────────────────────────────────────
 function RequireAuth() {
@@ -171,6 +175,38 @@ const router = createBrowserRouter([
                 element: (
                   <LazyPage>
                     <UsersPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'programs',
+                element: (
+                  <LazyPage>
+                    <ProgramsPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'offerings',
+                element: (
+                  <LazyPage>
+                    <OfferingsPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'grading-scales',
+                element: (
+                  <LazyPage>
+                    <GradingScalesPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'course-catalog',
+                element: (
+                  <LazyPage>
+                    <CoursesCatalogPage />
                   </LazyPage>
                 ),
               },

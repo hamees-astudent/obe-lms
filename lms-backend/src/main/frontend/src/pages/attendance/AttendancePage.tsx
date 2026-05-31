@@ -193,7 +193,7 @@ function ManageLanding() {
       queryKey: ['programs', p.id, 'semesters', 'active'],
       queryFn: () =>
         api
-          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=ACTIVE`)
+          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=OPEN`)
           .then((r) => r.data),
       enabled: programs.length > 0,
     })),

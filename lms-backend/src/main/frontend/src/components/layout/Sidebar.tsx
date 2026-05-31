@@ -7,6 +7,9 @@ import {
   Bell,
   Users,
   GraduationCap,
+  Building2,
+  BarChart2,
+  Library,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
@@ -26,7 +29,11 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/assessment',    label: 'Assessment',     icon: FileText },
   { to: '/transcripts',   label: 'Transcripts',   icon: GraduationCap },
   { to: '/notifications', label: 'Notifications', icon: Bell },
-  { to: '/users',         label: 'Users',          icon: Users, roles: ['ADMIN'] },
+  { to: '/users',         label: 'Users',          icon: Users,       roles: ['ADMIN'] },
+  { to: '/programs',      label: 'Programs',       icon: GraduationCap, roles: ['ADMIN'] },
+  { to: '/offerings',     label: 'Offerings',      icon: Building2,   roles: ['ADMIN'] },
+  { to: '/grading-scales',  label: 'Grading Scales',  icon: BarChart2,    roles: ['ADMIN'] },
+  { to: '/course-catalog',   label: 'Course Catalog',   icon: Library,      roles: ['ADMIN'] },
 ];
 
 export default function Sidebar() {
