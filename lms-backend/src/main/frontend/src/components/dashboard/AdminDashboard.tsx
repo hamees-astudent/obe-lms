@@ -68,10 +68,10 @@ export default function AdminDashboard() {
   // Collect active semesters across all active programs
   const semesterQueries = useQueries({
     queries: activePrograms.map((p) => ({
-      queryKey: ['programs', p.id, 'semesters', 'active'],
+      queryKey: ['programs', p.id, 'semesters', 'open'],
       queryFn: () =>
         api
-          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=ACTIVE`)
+          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=OPEN`)
           .then((r) => r.data),
       enabled: activePrograms.length > 0,
     })),

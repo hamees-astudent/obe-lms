@@ -162,10 +162,10 @@ function TeacherCourses() {
 
   const semesterQueries = useQueries({
     queries: programs.map((p) => ({
-      queryKey: ['programs', p.id, 'semesters', 'active'],
+      queryKey: ['programs', p.id, 'semesters', 'open'],
       queryFn: () =>
         api
-          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=ACTIVE`)
+          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=OPEN`)
           .then((r) => r.data),
       enabled: programs.length > 0,
     })),
@@ -231,10 +231,10 @@ function AdminCourses() {
 
   const semesterQueries = useQueries({
     queries: programs.map((p) => ({
-      queryKey: ['programs', p.id, 'semesters', 'active'],
+      queryKey: ['programs', p.id, 'semesters', 'open'],
       queryFn: () =>
         api
-          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=ACTIVE`)
+          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=OPEN`)
           .then((r) => r.data),
       enabled: programs.length > 0,
     })),
