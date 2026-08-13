@@ -47,6 +47,10 @@ public class Semester extends BaseEntity {
     @Column(nullable = false, length = 10)
     private String status = "OPEN";
 
+    /** The only values {@link #status} may hold. */
+    public static final java.util.Set<String> STATUSES =
+            java.util.Set.of("OPEN", "CLOSED");
+
     @Column(name = "closed_at")
     private LocalDateTime closedAt;
 

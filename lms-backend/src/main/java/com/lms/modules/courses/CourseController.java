@@ -102,6 +102,42 @@ public class CourseController {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    // Material → CLO mappings
+    // ═══════════════════════════════════════════════════════════════════════
+
+    @PostMapping("/api/materials/{materialId}/clo-mappings")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public MaterialCloMappingResponse addMaterialCloMapping(
+            @PathVariable UUID materialId,
+            @Valid @RequestBody CreateMaterialCloMappingRequest req) {
+        return courseService.addMaterialCloMapping(materialId, req);
+    }
+
+    @DeleteMapping("/api/materials/{materialId}/clo-mappings/{cloId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public void removeMaterialCloMapping(
+            @PathVariable UUID materialId,
+            @PathVariable UUID cloId) {
+        courseService.removeMaterialCloMapping(materialId, cloId);
+    }
+
+    @GetMapping("/api/materials/{materialId}/clo-mappings")
+    @PreAuthorize("isAuthenticated()")
+    public List<MaterialCloMappingResponse> listMaterialCloMappings(
+            @PathVariable UUID materialId) {
+        return courseService.listMaterialCloMappings(materialId);
+    }
+
+    /** OBE coverage: which CLOs are taught, measured and mapped to PLOs. */
+    @GetMapping("/api/courses/{courseId}/clo-coverage")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
+    public List<CloCoverageResponse> getCloCoverage(@PathVariable UUID courseId) {
+        return courseService.getCloCoverage(courseId);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     // Admin: PSC Offerings
     // ═══════════════════════════════════════════════════════════════════════
 

@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Thin wrapper around {@link StreamBridge} for publishing domain events to Kafka.
@@ -45,6 +47,28 @@ public class KafkaEventPublisher {
 
     public void publishAssessmentEvent(AssessmentEvent event) {
         send(KafkaTopics.TOPIC_ASSESSMENT, event, event.getEventId());
+    }
+
+    /**
+     * Publishes only once the surrounding transaction commits.
+     *
+     * <p>Use for events announcing that something now exists. Publishing inline
+     * can announce a quiz whose transaction then rolls back — the class gets
+     * told about work they will never see, and the notification cannot be
+     * recalled. Outside a transaction this behaves like an immediate publish.
+     */
+    public void publishAssessmentEventAfterCommit(AssessmentEvent event) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            publishAssessmentEvent(event);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        publishAssessmentEvent(event);
+                    }
+                });
     }
 
     public void publishSemesterEvent(SemesterEvent event) {

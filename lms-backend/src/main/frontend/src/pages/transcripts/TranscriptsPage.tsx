@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueries, useMutation } from '@tanstack/react-query';
 import {
   GraduationCap,
@@ -9,14 +9,21 @@ import {
   Search,
   RefreshCw,
   BookOpen,
+  X,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { parseApiError } from '@/lib/apiError';
+import { toast } from '@/components/ui/Toast';
+import Spinner from '@/components/ui/Spinner';
+import Modal from '@/components/ui/Modal';
+import CopyableId from '@/components/ui/CopyableId';
 import { useAuthStore } from '@/store/authStore';
 import type {
   TranscriptSummaryResponse,
   TranscriptResponse,
   ProgramSummaryResponse,
   SemesterResponse,
+  UserSummaryResponse,
 } from '@/types/api';
 
 // ---------------------------------------------------------------------------
@@ -104,24 +111,8 @@ function TranscriptDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <div className="flex items-center gap-3">
-            <GraduationCap className="h-6 w-6 text-primary-600" />
-            <h2 className="text-xl font-semibold text-gray-900">Transcript</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+    <Modal open onClose={onClose} title="Transcript" maxWidth="max-w-4xl">
+      <div className="space-y-6">
           {detailQ.isLoading && (
             <p className="text-center text-sm text-gray-500 py-10">Loading transcript…</p>
           )}
@@ -173,8 +164,9 @@ function TranscriptDetailModal({
                 <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
                   Course Results
                 </h3>
-                <div className="overflow-hidden rounded-xl border">
-                  <table className="w-full text-sm">
+                {/* Six columns will not fit a phone; scroll the table, not the page. */}
+                <div className="overflow-x-auto rounded-xl border scrollbar-thin">
+                  <table className="w-full min-w-[34rem] text-sm">
                     <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                       <tr>
                         <th className="px-4 py-3 text-left">Course</th>
@@ -304,25 +296,23 @@ function TranscriptDetailModal({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 border-t px-6 py-4">
-          <button
-            onClick={onClose}
-            className="rounded-lg border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            Close
-          </button>
-          <button
-            onClick={handleDownload}
-            disabled={!t || downloading}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" />
-            {downloading ? 'Downloading…' : 'Download PDF'}
-          </button>
-        </div>
+      <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
+        <button
+          onClick={onClose}
+          className="rounded-lg border px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          Close
+        </button>
+        <button
+          onClick={handleDownload}
+          disabled={!t || downloading}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+        >
+          <Download className="h-4 w-4" />
+          {downloading ? 'Downloading…' : 'Download PDF'}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -443,44 +433,119 @@ function StudentView({ onView }: { onView: (id: string) => void }) {
 // Admin/Teacher — By Student tab
 // ---------------------------------------------------------------------------
 function ByStudentView({ onView }: { onView: (id: string) => void }) {
-  const [studentId, setStudentId] = useState('');
-  const [searchId, setSearchId] = useState('');
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<UserSummaryResponse | null>(null);
 
-  const transcriptsQ = useQuery({
-    queryKey: ['admin', 'students', searchId, 'transcripts'],
+  // Debounced so typing a name does not fire a request per keystroke.
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(query.trim()), 300);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  const studentsQ = useQuery({
+    queryKey: ['admin', 'users', 'student-search', debounced],
     queryFn: () =>
       api
-        .get<TranscriptSummaryResponse[]>(`/api/admin/students/${searchId}/transcripts`)
-        .then((r) => r.data),
-    enabled: searchId.length === 36,
+        .get<Page<UserSummaryResponse>>('/admin/users', {
+          params: { role: 'STUDENT', q: debounced, size: 10 },
+        })
+        .then((r) => r.data.content),
+    enabled: debounced.length >= 2 && !selected,
   });
+  const matches = studentsQ.data ?? [];
 
+  const transcriptsQ = useQuery({
+    queryKey: ['admin', 'students', selected?.id, 'transcripts'],
+    queryFn: () =>
+      api
+        .get<TranscriptSummaryResponse[]>(`/admin/students/${selected!.id}/transcripts`)
+        .then((r) => r.data),
+    enabled: !!selected,
+  });
   const transcripts = transcriptsQ.data ?? [];
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={studentId}
-          onChange={(e) => setStudentId(e.target.value)}
-          placeholder="Student UUID…"
-          className="flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-        />
-        <button
-          onClick={() => setSearchId(studentId.trim())}
-          disabled={studentId.trim().length !== 36}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-40"
-        >
-          <Search className="h-4 w-4" />
-          Search
-        </button>
+      {/* Search by the identifiers staff actually have: name, email, roll number. */}
+      <div className="relative">
+        <div className="flex items-center gap-2 rounded-lg border bg-white px-3 focus-within:ring-2 focus-within:ring-primary-500">
+          <Search className="h-4 w-4 flex-shrink-0 text-gray-400" />
+          <input
+            type="text"
+            value={selected ? `${selected.name} (${selected.email})` : query}
+            onChange={(e) => {
+              setSelected(null);
+              setQuery(e.target.value);
+            }}
+            placeholder="Search students by name, email or roll number…"
+            className="w-full py-2 text-sm focus:outline-none"
+          />
+          {(selected || query) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelected(null);
+                setQuery('');
+              }}
+              className="flex-shrink-0 text-gray-400 hover:text-gray-600"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          {studentsQ.isFetching && <Spinner size="sm" />}
+        </div>
+
+        {!selected && debounced.length >= 2 && (
+          <div className="absolute z-10 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+            {studentsQ.isError ? (
+              <p className="px-3 py-2 text-sm text-red-600">
+                {parseApiError(studentsQ.error)}
+              </p>
+            ) : matches.length === 0 && !studentsQ.isFetching ? (
+              <p className="px-3 py-2 text-sm text-gray-500">No matching students.</p>
+            ) : (
+              matches.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => setSelected(u)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm text-gray-900">{u.name}</span>
+                    <span className="block truncate text-xs text-gray-500">{u.email}</span>
+                  </span>
+                  {u.studentNumber && (
+                    <span className="flex-shrink-0 font-mono text-xs text-gray-400">
+                      {u.studentNumber}
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
-      {searchId && transcriptsQ.isLoading && (
-        <p className="text-sm text-gray-500">Searching…</p>
+      {selected && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
+          <span className="font-medium text-gray-800">{selected.name}</span>
+          {selected.studentNumber && (
+            <span className="font-mono text-xs text-gray-500">{selected.studentNumber}</span>
+          )}
+          <CopyableId id={selected.id} />
+        </div>
       )}
-      {searchId && !transcriptsQ.isLoading && transcripts.length === 0 && (
+
+      {selected && transcriptsQ.isLoading && (
+        <p className="text-sm text-gray-500">Loading transcripts…</p>
+      )}
+      {selected && transcriptsQ.isError && (
+        <p className="text-sm text-red-600">{parseApiError(transcriptsQ.error)}</p>
+      )}
+      {selected && !transcriptsQ.isLoading && !transcriptsQ.isError && transcripts.length === 0 && (
         <p className="text-sm text-gray-500">No transcripts found for this student.</p>
       )}
       {transcripts.map((t, idx) => (
@@ -500,7 +565,6 @@ function BySemesterView({ onView }: { onView: (id: string) => void }) {
   const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [loadedSemesterId, setLoadedSemesterId] = useState('');
   const [loadedProgramId, setLoadedProgramId] = useState('');
-  const [regenMsg, setRegenMsg] = useState('');
 
   const programsQ = useQuery({
     queryKey: ['programs', 'active'],
@@ -532,7 +596,7 @@ function BySemesterView({ onView }: { onView: (id: string) => void }) {
     queryFn: () =>
       api
         .get<TranscriptSummaryResponse[]>(
-          `/api/admin/transcripts/semester/${loadedSemesterId}`,
+          `/admin/transcripts/semester/${loadedSemesterId}`,
         )
         .then((r) => r.data),
     enabled: loadedSemesterId.length === 36,
@@ -542,10 +606,12 @@ function BySemesterView({ onView }: { onView: (id: string) => void }) {
   const regenMutation = useMutation({
     mutationFn: () =>
       api.post(
-        `/api/admin/transcripts/semester/${loadedSemesterId}/generate?programId=${loadedProgramId}`,
+        `/admin/transcripts/semester/${loadedSemesterId}/generate?programId=${loadedProgramId}`,
       ),
-    onSuccess: () => setRegenMsg('Re-generation triggered successfully.'),
-    onError: () => setRegenMsg('Failed to trigger re-generation.'),
+    // Regeneration is a background job with no visible result on this page,
+    // so the confirmation is the only signal the admin gets.
+    onSuccess: () =>
+      toast.success('Transcript re-generation started. Refresh in a moment to see updates.'),
   });
 
   return (
@@ -586,7 +652,6 @@ function BySemesterView({ onView }: { onView: (id: string) => void }) {
           onClick={() => {
             setLoadedSemesterId(selectedSemesterId);
             setLoadedProgramId(selectedProgramId);
-            setRegenMsg('');
           }}
           disabled={!selectedSemesterId}
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-40"
@@ -615,9 +680,6 @@ function BySemesterView({ onView }: { onView: (id: string) => void }) {
               Re-generate All
             </button>
           </div>
-          {regenMsg && (
-            <p className="text-xs text-gray-600 bg-gray-50 rounded p-2">{regenMsg}</p>
-          )}
           {transcripts.length === 0 && (
             <p className="text-sm text-gray-500">No transcripts for this semester yet.</p>
           )}

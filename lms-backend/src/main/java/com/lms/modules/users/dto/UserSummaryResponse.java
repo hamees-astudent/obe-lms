@@ -12,5 +12,7 @@ public record UserSummaryResponse(
         String email,
         Role role,
         String status,
+        /** Institutional roll number; null for non-students and unprofiled students. */
+        String studentNumber,
         LocalDateTime createdAt
 ) {}

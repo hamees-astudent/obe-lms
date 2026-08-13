@@ -168,6 +168,8 @@ export interface UserSummaryResponse {
   email: string;
   role: Role;
   status: string;
+  /** Institutional roll number; null for non-students and unprofiled students. */
+  studentNumber?: string;
   createdAt: string;
 }
 
@@ -180,13 +182,28 @@ export interface UserDetailResponse {
   createdAt: string;
 }
 
+/**
+ * Mirrors the backend `enrollments.status` values (see `Enrollment.java`).
+ * Use {@link ENROLLMENT_STATUS} when building query strings so a typo is a
+ * compile error rather than a silently empty result set.
+ */
+export type EnrollmentStatus = 'ACTIVE' | 'DROPPED' | 'COMPLETED';
+
+export const ENROLLMENT_STATUS = {
+  ACTIVE: 'ACTIVE',
+  DROPPED: 'DROPPED',
+  COMPLETED: 'COMPLETED',
+} as const satisfies Record<Uppercase<string>, EnrollmentStatus>;
+
 export interface EnrollmentResponse {
   id: UUID;
   pscId: UUID;
   studentId: UUID;
   studentName?: string;
+  /** Institutional roll number; only resolved on offering-roster endpoints. */
+  studentNumber?: string;
   courseRole: Role;
-  status: 'ACTIVE' | 'DROPPED' | 'COMPLETED';
+  status: EnrollmentStatus;
   enrolledAt: string;
   droppedAt?: string;
   createdAt: string;
@@ -305,13 +322,13 @@ export interface CreateSessionBody {
 }
 
 export interface MarkAttendanceBody {
-  status: string;
+  status: AttendanceStatus;
   remarks?: string;
 }
 
 export interface BulkMarkEntry {
   studentId: UUID;
-  status: string;
+  status: AttendanceStatus;
   remarks?: string;
 }
 
@@ -398,6 +415,8 @@ export interface QuizResponse {
   title: string;
   description?: string;
   durationMinutes?: number;
+  /** Sum of the marks of every question; 0 until questions are added. */
+  totalMarks: number;
   availableFrom?: string;
   availableUntil?: string;
   shuffleQuestions: boolean;
@@ -588,13 +607,23 @@ export interface TranscriptResponse {
 // ---------------------------------------------------------------------------
 // Notifications
 // ---------------------------------------------------------------------------
+/**
+ * Every `eventType` the backend writes (see `NotificationService`). The union
+ * previously listed only a subset, so real notifications fell through to the
+ * generic bell icon with no label.
+ */
 export type NotificationEventType =
   | 'ENROLLMENT_CONFIRMED'
+  | 'ENROLLMENT_DROPPED'
   | 'ATTENDANCE_ALERT'
   | 'ASSIGNMENT_CREATED'
   | 'QUIZ_CREATED'
-  | 'RESULTS_PUBLISHED'
-  | 'SEMESTER_COMPLETED';
+  | 'MATERIAL_ADDED'
+  | 'ASSIGNMENT_SUBMITTED'
+  | 'ASSIGNMENT_GRADED'
+  | 'QUIZ_SUBMITTED'
+  | 'SEMESTER_CLOSED'
+  | 'SEMESTER_REOPENED';
 
 export interface NotificationResponse {
   id: UUID;

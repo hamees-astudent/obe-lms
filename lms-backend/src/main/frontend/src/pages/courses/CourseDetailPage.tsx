@@ -20,9 +20,19 @@ import {
   ExternalLink,
   ChevronLeft,
   BookOpen,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { toast } from '@/components/ui/Toast';
+import { parseApiError } from '@/lib/apiError';
+import {
+  uploadFile as uploadToServer,
+  validateUpload,
+  formatBytes,
+  openFile,
+  MAX_UPLOAD_BYTES,
+} from '@/lib/files';
 import { useAuthStore } from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -33,8 +43,6 @@ import Badge from '@/components/ui/Badge';
 import type {
   OfferingSummaryResponse,
   CourseMaterialResponse,
-  UploadedFileResponse,
-  PresignedUrlResponse,
   CreateMaterialBody,
   UpdateMaterialBody,
   UUID,
@@ -57,11 +65,8 @@ const TYPE_META: Record<
   QUIZ:         { icon: HelpCircle,     color: 'bg-purple-50 text-purple-600', label: 'Quiz' },
 };
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+/** Material types a teacher can create directly (ASSIGNMENT/QUIZ are generated). */
+const CREATABLE_TYPES = ['ANNOUNCEMENT', 'DOCUMENT', 'URL', 'VIDEO_LINK'] as const;
 
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -78,17 +83,19 @@ function DocumentContent({ content }: { content: Record<string, unknown> }) {
   const fileSize = content.fileSize as number | undefined;
   const [loading, setLoading] = useState(false);
 
+  const [downloadError, setDownloadError] = useState('');
+
   async function handleDownload() {
     if (!fileId) return;
+    setDownloadError('');
     setLoading(true);
     try {
-      const res = await api
-        .get<PresignedUrlResponse>(`/files/${fileId}/url?expiryMinutes=5`)
-        .then((r) => r.data);
-      window.open(res.url, '_blank', 'noopener,noreferrer');
-    } catch {
-      // Fallback to direct download (auth cookie or same-origin session)
-      window.open(`/api/files/${fileId}/download`, '_blank', 'noopener,noreferrer');
+      // Always via a pre-signed URL. Linking at /api/files/{id}/download
+      // directly sends no Authorization header — the token is held in memory,
+      // not in a cookie — so that route always answers 401.
+      await openFile(fileId);
+    } catch (err) {
+      setDownloadError(parseApiError(err, 'Could not open the file.'));
     } finally {
       setLoading(false);
     }
@@ -102,6 +109,9 @@ function DocumentContent({ content }: { content: Record<string, unknown> }) {
         </p>
         {fileSize != null && (
           <p className="text-xs text-gray-400">{formatBytes(fileSize)}</p>
+        )}
+        {downloadError && (
+          <p className="mt-0.5 text-xs text-red-600">{downloadError}</p>
         )}
       </div>
       <Button
@@ -196,12 +206,147 @@ function QuizContent({ content, pscId }: { content: Record<string, unknown>; psc
 }
 
 // ---------------------------------------------------------------------------
+// Material → CLO mapping
+// ---------------------------------------------------------------------------
+interface MaterialCloMappingItem {
+  materialId: UUID;
+  cloId: UUID;
+  cloCode: string;
+  cloTitle: string;
+  weight?: number;
+  createdAt: string;
+}
+
+interface CourseCloItem {
+  id: UUID;
+  code: string;
+  title: string;
+  orderIndex: number;
+}
+
+/**
+ * Records which CLOs a piece of material teaches toward.
+ *
+ * This closes the last gap in the OBE chain — assessments could already be
+ * mapped to CLOs and CLOs to PLOs, but nothing recorded which lecture, reading
+ * or video actually delivers an outcome.
+ */
+function MaterialCloMappings({
+  material,
+  courseId,
+  canManage,
+}: {
+  material: CourseMaterialResponse;
+  courseId?: UUID;
+  canManage: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [cloId, setCloId] = useState('');
+  const [error, setError] = useState('');
+
+  const mappingsQ = useQuery({
+    queryKey: ['materials', material.id, 'clo-mappings'],
+    queryFn: () =>
+      api
+        .get<MaterialCloMappingItem[]>(`/materials/${material.id}/clo-mappings`)
+        .then((r) => r.data),
+  });
+  const mappings = mappingsQ.data ?? [];
+
+  const closQ = useQuery({
+    queryKey: ['courses', courseId, 'clos'],
+    queryFn: () => api.get<CourseCloItem[]>(`/courses/${courseId}/clos`).then((r) => r.data),
+    enabled: canManage && !!courseId,
+  });
+  const clos = closQ.data ?? [];
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ['materials', material.id, 'clo-mappings'] });
+
+  const addMut = useMutation({
+    mutationFn: () => api.post(`/materials/${material.id}/clo-mappings`, { cloId }),
+    onSuccess: () => {
+      invalidate();
+      setCloId('');
+      setError('');
+    },
+    onError: (err) => setError(parseApiError(err)),
+  });
+
+  const removeMut = useMutation({
+    mutationFn: (target: UUID) => api.delete(`/materials/${material.id}/clo-mappings/${target}`),
+    onSuccess: invalidate,
+    onError: (err) => setError(parseApiError(err)),
+  });
+
+  const unmapped = clos.filter((c) => !mappings.some((m) => m.cloId === c.id));
+
+  // Students see the tags only when there are some; staff always get the editor.
+  if (!canManage && mappings.length === 0) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <span className="text-xs font-medium text-gray-500">CLOs:</span>
+      {mappings.map((m) => (
+        <span
+          key={m.cloId}
+          title={m.cloTitle}
+          className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700"
+        >
+          {m.cloCode}
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => removeMut.mutate(m.cloId)}
+              className="text-primary-300 hover:text-red-500"
+              aria-label={`Unmap ${m.cloCode}`}
+            >
+              <X size={10} />
+            </button>
+          )}
+        </span>
+      ))}
+      {mappings.length === 0 && (
+        <span className="text-xs text-gray-400">none mapped</span>
+      )}
+
+      {canManage && unmapped.length > 0 && (
+        <>
+          <select
+            value={cloId}
+            onChange={(e) => setCloId(e.target.value)}
+            className="h-6 rounded border border-gray-300 bg-white px-1.5 text-xs focus:border-primary-500 focus:outline-none"
+          >
+            <option value="">Add CLO…</option>
+            {unmapped.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.code} — {c.title}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={!cloId || addMut.isPending}
+            onClick={() => addMut.mutate()}
+            className="rounded px-1.5 py-0.5 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:text-gray-300"
+          >
+            Map
+          </button>
+        </>
+      )}
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Material card
 // ---------------------------------------------------------------------------
 interface MaterialCardProps {
   material: CourseMaterialResponse;
   canManage: boolean;
   pscId: UUID;
+  courseId?: UUID;
   onEdit: (m: CourseMaterialResponse) => void;
   onDelete: (id: UUID) => void;
   onToggleVisible: (m: CourseMaterialResponse) => void;
@@ -211,6 +356,7 @@ function MaterialCard({
   material,
   canManage,
   pscId,
+  courseId,
   onEdit,
   onDelete,
   onToggleVisible,
@@ -247,19 +393,19 @@ function MaterialCard({
                 <button
                   onClick={() => onToggleVisible(material)}
                   title={material.visible ? 'Hide from students' : 'Show to students'}
-                  className="rounded p-1.5 text-gray-400 hover:text-gray-700"
+                  className="rounded p-2 text-gray-400 hover:text-gray-700"
                 >
                   {material.visible ? <Eye size={15} /> : <EyeOff size={15} />}
                 </button>
                 <button
                   onClick={() => onEdit(material)}
-                  className="rounded p-1.5 text-gray-400 hover:text-gray-700"
+                  className="rounded p-2 text-gray-400 hover:text-gray-700"
                 >
                   <Pencil size={15} />
                 </button>
                 <button
                   onClick={() => onDelete(material.id)}
-                  className="rounded p-1.5 text-gray-400 hover:text-red-500"
+                  className="rounded p-2 text-gray-400 hover:text-red-500"
                 >
                   <Trash2 size={15} />
                 </button>
@@ -287,6 +433,11 @@ function MaterialCard({
               <QuizContent content={material.content} pscId={pscId} />
             )}
           </div>
+          <MaterialCloMappings
+            material={material}
+            courseId={courseId}
+            canManage={canManage}
+          />
         </div>
       </div>
     </Card>
@@ -402,6 +553,7 @@ function MaterialFormModal({ pscId, editing, onClose }: MaterialFormModalProps) 
   const isEdit = editing !== null;
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const {
     register,
@@ -462,15 +614,17 @@ function MaterialFormModal({ pscId, editing, onClose }: MaterialFormModalProps) 
         setUploadError('Please select a file to upload.');
         return;
       }
-      const fd = new FormData();
-      fd.append('file', uploadFile);
-      fd.append('context', 'materials');
+      const invalid = validateUpload(uploadFile);
+      if (invalid) {
+        setUploadError(invalid);
+        return;
+      }
       try {
-        const up = await api
-          .post<UploadedFileResponse>('/files', fd, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          })
-          .then((r) => r.data);
+        const up = await uploadToServer(uploadFile, {
+          context: 'materials',
+          contextId: pscId,
+          onProgress: setUploadProgress,
+        });
         content = {
           fileId: up.id,
           objectKey: up.objectKey,
@@ -478,8 +632,8 @@ function MaterialFormModal({ pscId, editing, onClose }: MaterialFormModalProps) 
           fileSize: up.fileSize,
           mimeType: up.contentType,
         };
-      } catch {
-        setUploadError('File upload failed. Please try again.');
+      } catch (err) {
+        setUploadError(parseApiError(err, 'File upload failed. Please try again.'));
         return;
       }
     }
@@ -515,17 +669,39 @@ function MaterialFormModal({ pscId, editing, onClose }: MaterialFormModalProps) 
       maxWidth="max-w-xl"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 px-6 pb-6 pt-2">
-        {/* Type selector — add mode only */}
+        {/* Type selector — add mode only.
+            A segmented radio group rather than a <select>: an <option> cannot
+            contain an SVG, so a dropdown could only label these with emoji. */}
         {!isEdit && (
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700">Type</label>
-            <select {...register('type')} className={selectBase}>
-              <option value="ANNOUNCEMENT">📢 Announcement</option>
-              <option value="DOCUMENT">📄 Document (file upload)</option>
-              <option value="URL">🔗 External Link</option>
-              <option value="VIDEO_LINK">🎬 Video Link</option>
-            </select>
-          </div>
+          <fieldset className="flex flex-col gap-1">
+            <legend className="mb-1 text-sm font-medium text-gray-700">Type</legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {CREATABLE_TYPES.map((value) => {
+                const meta = TYPE_META[value];
+                const Icon = meta.icon;
+                const selected = type === value;
+                return (
+                  <label
+                    key={value}
+                    className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border-2 px-2 py-3 text-center text-xs font-medium transition-colors ${
+                      selected
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 text-gray-600 hover:border-primary-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      value={value}
+                      {...register('type')}
+                      className="sr-only"
+                    />
+                    <Icon size={18} />
+                    {meta.label}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
         )}
 
         <Input
@@ -565,7 +741,7 @@ function MaterialFormModal({ pscId, editing, onClose }: MaterialFormModalProps) 
               />
             )}
             {type === 'VIDEO_LINK' && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
                   <label className="text-sm font-medium text-gray-700">Platform</label>
                   <select {...register('platform')} className={selectBase}>
@@ -611,9 +787,25 @@ function MaterialFormModal({ pscId, editing, onClose }: MaterialFormModalProps) 
             <label className="text-sm font-medium text-gray-700">File</label>
             <input
               type="file"
-              onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setUploadError(file ? (validateUpload(file) ?? '') : '');
+                setUploadFile(file);
+              }}
               className="block w-full text-sm text-gray-500 file:mr-3 file:rounded-lg file:border-0 file:bg-primary-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100"
             />
+            <p className="text-xs text-gray-400">
+              Up to {formatBytes(MAX_UPLOAD_BYTES)}
+              {uploadFile && !uploadError && ` · ${formatBytes(uploadFile.size)} selected`}
+            </p>
+            {pending && uploadProgress > 0 && uploadProgress < 100 && (
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className="h-full rounded-full bg-primary-500 transition-all duration-200"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            )}
             {uploadError && (
               <p className="text-xs text-red-600">{uploadError}</p>
             )}
@@ -629,7 +821,7 @@ function MaterialFormModal({ pscId, editing, onClose }: MaterialFormModalProps) 
         )}
 
         {/* ── Visibility + order ── */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
             <input
               type="checkbox"
@@ -714,6 +906,7 @@ export default function CourseDetailPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: UUID) => api.delete(`/materials/${id}`),
     onSuccess: () => {
+      toast.success('Material deleted.');
       queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'materials'] });
       setDeletingId(null);
     },
@@ -813,6 +1006,7 @@ export default function CourseDetailPage() {
               material={m}
               canManage={canManage}
               pscId={pscId!}
+              courseId={offering?.courseId}
               onEdit={(mat) => setModal({ mode: 'edit', material: mat })}
               onDelete={setDeletingId}
               onToggleVisible={(mat) => toggleMutation.mutate(mat)}

@@ -7,6 +7,8 @@ import {
   Plus, Edit2, Users, BookOpen, ChevronDown, ChevronUp, UserPlus, UserMinus,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { toast } from '@/components/ui/Toast';
+import QueryError from '@/components/ui/QueryError';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -62,7 +64,7 @@ function EnrollmentPanel({
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedCourseRole, setSelectedCourseRole] = useState<Role>('STUDENT');
 
-  const { data: enrollments = [], isLoading } = useQuery<EnrollmentResponse[]>({
+  const { data: enrollments = [], isLoading, isError, error, refetch } = useQuery<EnrollmentResponse[]>({
     queryKey: ['enrollments', offeringId],
     queryFn: () => api.get(`/offerings/${offeringId}/enrollments`).then((r) => r.data),
   });
@@ -93,7 +95,10 @@ function EnrollmentPanel({
 
   const dropMut = useMutation({
     mutationFn: (id: UUID) => api.delete(`/admin/enrollments/${id}`),
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      toast.success('Student unenrolled.');
+      invalidate();
+    },
   });
 
   // Users not yet actively enrolled
@@ -139,7 +144,9 @@ function EnrollmentPanel({
         </Button>
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <QueryError error={error} onRetry={() => refetch()} />
+      ) : isLoading ? (
         <div className="flex justify-center py-3"><Spinner /></div>
       ) : enrollments.length === 0 ? (
         <p className="text-xs text-gray-400 text-center py-2">No members added yet.</p>
@@ -213,14 +220,14 @@ function OfferingRow({
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => onEdit(offering)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
+            className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
             title="Edit offering"
           >
             <Edit2 size={14} />
           </button>
           <button
             onClick={() => setExpanded((e) => !e)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 transition flex items-center gap-1 text-xs"
+            className="rounded p-2 text-gray-400 hover:bg-gray-100 transition flex items-center gap-1 text-xs"
           >
             <Users size={14} />
             {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -290,7 +297,8 @@ export default function OfferingsPage() {
 
   const createMut = useMutation({
     mutationFn: (body: CreateForm) => api.post('/admin/offerings', body),
-    onSuccess: () => { invalidate(); setShowCreate(false); },
+    onSuccess: () => {
+      toast.success('Offering created.'); invalidate(); setShowCreate(false); },
   });
 
   const updateMut = useMutation({

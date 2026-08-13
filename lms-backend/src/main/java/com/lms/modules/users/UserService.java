@@ -42,9 +42,12 @@ public class UserService {
         return toSummary(userRepository.save(user));
     }
 
-    public Page<UserSummaryResponse> listUsers(Role role, String status, Pageable pageable) {
+    public Page<UserSummaryResponse> listUsers(Role role, String status, String q,
+                                              Pageable pageable) {
         Page<User> page;
-        if (role != null && status != null) {
+        if (q != null && !q.isBlank()) {
+            page = userRepository.search(q.trim(), role, status, pageable);
+        } else if (role != null && status != null) {
             page = userRepository.findAllByRoleAndStatus(role, status, pageable);
         } else if (role != null) {
             page = userRepository.findAllByRole(role, pageable);
@@ -205,8 +208,12 @@ public class UserService {
     }
 
     private UserSummaryResponse toSummary(User u) {
+        String studentNumber = u.getRole() == Role.STUDENT
+                ? studentProfileRepository.findById(u.getId())
+                        .map(StudentProfile::getStudentNumber).orElse(null)
+                : null;
         return new UserSummaryResponse(u.getId(), u.getName(), u.getEmail(),
-                u.getRole(), u.getStatus(), u.getCreatedAt());
+                u.getRole(), u.getStatus(), studentNumber, u.getCreatedAt());
     }
 
     private UserDetailResponse toDetail(User u) {

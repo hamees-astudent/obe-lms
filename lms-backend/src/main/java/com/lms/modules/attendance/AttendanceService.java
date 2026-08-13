@@ -6,7 +6,7 @@ import com.lms.shared.CacheNames;
 import com.lms.shared.events.AttendanceAlertEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,11 +28,13 @@ public class AttendanceService {
     private final AttendanceRecordRepository  recordRepository;
     private final KafkaEventPublisher         kafkaEventPublisher;
     private final AttendanceProperties        properties;
+    private final CacheManager                cacheManager;
 
     // ── Sessions ──────────────────────────────────────────────────────────────
 
     @Transactional
-    public SessionResponse createSession(UUID createdBy, CreateSessionRequest req) {
+    public SessionResponse createSession(UUID createdBy, boolean isAdmin, CreateSessionRequest req) {
+        requireOfferingStaff(req.pscId(), createdBy, isAdmin);
         var session = new AttendanceSession();
         session.setPscId(req.pscId());
         session.setCreatedBy(createdBy);
@@ -42,8 +44,9 @@ public class AttendanceService {
     }
 
     @Transactional
-    public SessionResponse closeSession(UUID sessionId, UUID actorId) {
+    public SessionResponse closeSession(UUID sessionId, UUID actorId, boolean isAdmin) {
         var session = requireSession(sessionId);
+        requireOfferingStaff(session.getPscId(), actorId, isAdmin);
         if (!session.isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Session is already closed");
@@ -67,8 +70,10 @@ public class AttendanceService {
 
     @Transactional
     public AttendanceRecordResponse markRecord(UUID sessionId, UUID studentId,
-                                               MarkAttendanceRequest req, UUID markedBy) {
+                                               MarkAttendanceRequest req, UUID markedBy,
+                                               boolean isAdmin) {
         var session = requireSession(sessionId);
+        requireOfferingStaff(session.getPscId(), markedBy, isAdmin);
         if (!session.isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Cannot mark attendance on a closed session");
@@ -87,14 +92,17 @@ public class AttendanceService {
         record.setMarkedBy(markedBy);
         record = recordRepository.save(record);
 
+        evictSummary(session.getPscId(), studentId);
         checkThresholdAndAlert(session.getPscId(), studentId);
         return toRecordResponse(record);
     }
 
     @Transactional
     public List<AttendanceRecordResponse> bulkMark(UUID sessionId,
-                                                    BulkMarkRequest req, UUID markedBy) {
+                                                    BulkMarkRequest req, UUID markedBy,
+                                                    boolean isAdmin) {
         var session = requireSession(sessionId);
+        requireOfferingStaff(session.getPscId(), markedBy, isAdmin);
         if (!session.isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Cannot mark attendance on a closed session");
@@ -114,8 +122,11 @@ public class AttendanceService {
             return recordRepository.save(record);
         }).toList();
 
-        // Check threshold for each student affected
-        results.forEach(r -> checkThresholdAndAlert(session.getPscId(), r.getStudentId()));
+        // Refresh the cached summary and check the threshold for each student affected
+        results.forEach(r -> {
+            evictSummary(session.getPscId(), r.getStudentId());
+            checkThresholdAndAlert(session.getPscId(), r.getStudentId());
+        });
 
         return results.stream().map(this::toRecordResponse).toList();
     }
@@ -140,16 +151,52 @@ public class AttendanceService {
 
     // ── Internal helpers ──────────────────────────────────────────────────────
 
+    /**
+     * Restricts a write to the staff who actually run the offering. Role alone
+     * is not enough: {@code hasRole('TEACHER')} lets any teacher in the
+     * institution open sessions on, and mark attendance for, a course that is
+     * not theirs.
+     */
+    private void requireOfferingStaff(UUID pscId, UUID userId, boolean isAdmin) {
+        if (isAdmin) {
+            return;
+        }
+        if (!sessionRepository.isStaffOfOffering(pscId, userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You are not the teacher or an assistant of this course offering");
+        }
+    }
+
     private AttendanceSession requireSession(UUID id) {
         return sessionRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Attendance session not found: " + id));
     }
 
+    /**
+     * Drops the cached summary for one student in one offering.
+     *
+     * <p>Done through the {@link CacheManager} rather than {@code @CacheEvict}
+     * on purpose: the marking methods call this from inside the same bean, and a
+     * self-invocation never passes through the caching proxy — the annotation
+     * would be silently inert and every student would keep reading the summary
+     * that was cached before their attendance was ever marked.
+     */
+    private void evictSummary(UUID pscId, UUID studentId) {
+        var cache = cacheManager.getCache(CacheNames.ATTENDANCE_SUMMARY);
+        if (cache != null) {
+            cache.evict(pscId + ":" + studentId);
+        }
+    }
+
     /** Recomputes the summary and publishes an alert if below threshold. */
-    @CacheEvict(value = CacheNames.ATTENDANCE_SUMMARY, key = "#pscId + ':' + #studentId")
     public void checkThresholdAndAlert(UUID pscId, UUID studentId) {
         var summary = buildSummary(pscId, studentId);
+        // Nothing counted yet (no records, or only EXCUSED ones) — a 0% here
+        // means "unknown", so alerting on it would be noise.
+        if (summary.total() == 0) {
+            return;
+        }
         if (summary.percentage() < properties.getThresholdPercentage()) {
             sessionRepository.findAlertContext(pscId, studentId).ifPresentOrElse(
                     ctx -> kafkaEventPublisher.publishAttendanceAlertEvent(
@@ -172,7 +219,10 @@ public class AttendanceService {
         var view = recordRepository.computeSummary(pscId, studentId);
         long attended = view.getAttended();
         long total    = view.getTotal();
-        double pct    = (total > 0) ? (attended * 100.0 / total) : 100.0;
+        // No marked sessions means "nothing recorded yet", not "perfect
+        // attendance" — reporting 100% here hides a course nobody is marking
+        // and suppresses the below-threshold alert.
+        double pct    = (total > 0) ? (attended * 100.0 / total) : 0.0;
         return new AttendanceSummaryResponse(pscId, studentId, attended, total, pct);
     }
 

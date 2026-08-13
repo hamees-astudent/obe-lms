@@ -5,6 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus, Edit2, Trash2, ChevronDown, ChevronUp, Star } from 'lucide-react';
 import api from '@/lib/api';
+import { toast } from '@/components/ui/Toast';
+import QueryError from '@/components/ui/QueryError';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -96,7 +98,7 @@ function EntriesPanel({ scale }: { scale: GradingScaleResponse }) {
                   <td className="px-3 py-2 text-right">
                     <button
                       onClick={() => { if (confirm(`Delete grade "${e.gradeLetter}"?`)) deleteMut.mutate(e.id); }}
-                      className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 transition"
+                      className="rounded p-2 text-red-400 hover:bg-red-50 hover:text-red-600 transition"
                     >
                       <Trash2 size={12} />
                     </button>
@@ -110,7 +112,7 @@ function EntriesPanel({ scale }: { scale: GradingScaleResponse }) {
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Grade Entry">
         <form onSubmit={addForm.handleSubmit((d) => addMut.mutate(d))} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Letter Grade</label>
               <Input {...addForm.register('gradeLetter')} placeholder="A+" maxLength={5} />
@@ -122,7 +124,7 @@ function EntriesPanel({ scale }: { scale: GradingScaleResponse }) {
               {addForm.formState.errors.gradePoints && <p className="text-xs text-red-500 mt-1">{addForm.formState.errors.gradePoints.message}</p>}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Min Percentage</label>
               <Input type="number" step="0.1" min={0} max={100} {...addForm.register('minPercentage')} placeholder="80" />
@@ -180,21 +182,21 @@ function ScaleRow({
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => onEdit(scale)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
+            className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
             title="Edit"
           >
             <Edit2 size={14} />
           </button>
           <button
             onClick={() => onDelete(scale)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-600 transition"
+            className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-red-600 transition"
             title="Delete"
           >
             <Trash2 size={14} />
           </button>
           <button
             onClick={() => setExpanded((e) => !e)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 transition"
+            className="rounded p-2 text-gray-400 hover:bg-gray-100 transition"
           >
             {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
           </button>
@@ -224,7 +226,7 @@ export default function GradingScalesPage() {
   });
   const programs = programsData?.content ?? [];
 
-  const { data: scales = [], isLoading } = useQuery<GradingScaleResponse[]>({
+  const { data: scales = [], isLoading, isError, error, refetch } = useQuery<GradingScaleResponse[]>({
     queryKey: ['grading-scales', programFilter],
     queryFn: () =>
       api
@@ -256,7 +258,10 @@ export default function GradingScalesPage() {
 
   const deleteMut = useMutation({
     mutationFn: (id: UUID) => api.delete(`/admin/grading-scales/${id}`),
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      toast.success('Grading scale deleted.');
+      invalidate();
+    },
   });
 
   const createForm = useForm<ScaleForm>({ resolver: zodResolver(scaleSchema) });
@@ -330,7 +335,9 @@ export default function GradingScalesPage() {
       </div>
 
       {/* List */}
-      {isLoading ? (
+      {isError ? (
+        <QueryError error={error} onRetry={() => refetch()} />
+      ) : isLoading ? (
         <div className="flex justify-center py-16"><Spinner size="lg" /></div>
       ) : scales.length === 0 ? (
         <Card>

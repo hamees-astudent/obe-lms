@@ -1,5 +1,6 @@
 package com.lms.modules.programs.dto;
 
+import com.lms.shared.InstitutionalCodes;
 import jakarta.validation.constraints.*;
 
 public record CreateProgramRequest(
@@ -8,7 +9,7 @@ public record CreateProgramRequest(
         String name,
 
         @NotBlank @Size(max = 20)
-        @Pattern(regexp = "[A-Z0-9_]+", message = "Code must be uppercase letters, digits or underscores")
+        @Pattern(regexp = InstitutionalCodes.CODE_PATTERN, message = InstitutionalCodes.CODE_MESSAGE)
         String code,
 
         String description,

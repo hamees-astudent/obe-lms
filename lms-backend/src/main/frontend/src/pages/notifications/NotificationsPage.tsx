@@ -10,6 +10,8 @@ import {
   GraduationCap,
   CheckCheck,
   Filter,
+  XCircle,
+  Inbox,
 } from 'lucide-react';
 import api from '@/lib/api';
 import type { NotificationResponse, NotificationPage, NotificationEventType } from '@/types/api';
@@ -43,6 +45,12 @@ function eventMeta(type: NotificationEventType): EventMeta {
         bg: 'bg-green-100',
         label: 'Enrollment',
       };
+    case 'ENROLLMENT_DROPPED':
+      return {
+        icon: <XCircle className="h-5 w-5 text-red-600" />,
+        bg: 'bg-red-100',
+        label: 'Enrollment',
+      };
     case 'ATTENDANCE_ALERT':
       return {
         icon: <AlertTriangle className="h-5 w-5 text-amber-600" />,
@@ -61,13 +69,27 @@ function eventMeta(type: NotificationEventType): EventMeta {
         bg: 'bg-purple-100',
         label: 'Quiz',
       };
-    case 'RESULTS_PUBLISHED':
+    case 'MATERIAL_ADDED':
+      return {
+        icon: <BookOpen className="h-5 w-5 text-sky-600" />,
+        bg: 'bg-sky-100',
+        label: 'Material',
+      };
+    case 'ASSIGNMENT_SUBMITTED':
+    case 'QUIZ_SUBMITTED':
+      return {
+        icon: <Inbox className="h-5 w-5 text-blue-600" />,
+        bg: 'bg-blue-100',
+        label: 'Submission',
+      };
+    case 'ASSIGNMENT_GRADED':
       return {
         icon: <Award className="h-5 w-5 text-indigo-600" />,
         bg: 'bg-indigo-100',
-        label: 'Results',
+        label: 'Result',
       };
-    case 'SEMESTER_COMPLETED':
+    case 'SEMESTER_CLOSED':
+    case 'SEMESTER_REOPENED':
       return {
         icon: <GraduationCap className="h-5 w-5 text-teal-600" />,
         bg: 'bg-teal-100',

@@ -29,6 +29,7 @@ const OfferingsPage       = lazy(() => import('@/pages/offerings/OfferingsPage')
 const GradingScalesPage     = lazy(() => import('@/pages/grading/GradingScalesPage'));
 const CoursesCatalogPage    = lazy(() => import('@/pages/courses/CoursesCatalogPage'));
 const NotFoundPage          = lazy(() => import('@/pages/NotFoundPage'));
+const ForbiddenPage         = lazy(() => import('@/pages/ForbiddenPage'));
 
 // ─── Guards ─────────────────────────────────────────────────────────────────
 function RequireAuth() {
@@ -40,7 +41,13 @@ function RequireAuth() {
 function RequireRole({ roles }: { roles: Role[] }) {
   const user = useAuthStore((s) => s.user);
   if (!user || !roles.includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
+    // Explain the refusal rather than bouncing the user to the dashboard,
+    // which is indistinguishable from a broken link.
+    return (
+      <LazyPage>
+        <ForbiddenPage />
+      </LazyPage>
+    );
   }
   return <Outlet />;
 }

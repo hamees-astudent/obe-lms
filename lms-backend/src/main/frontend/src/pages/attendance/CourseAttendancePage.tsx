@@ -13,13 +13,16 @@ import {
   CalendarCheck,
   Users,
   BarChart2,
+  AlertTriangle,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { todayApiDate } from '@/lib/datetime';
 import { useAuthStore } from '@/store/authStore';
 import Spinner from '@/components/ui/Spinner';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Input from '@/components/ui/Input';
+import { ENROLLMENT_STATUS } from '@/types/api';
 import type {
   UUID,
   OfferingSummaryResponse,
@@ -28,6 +31,8 @@ import type {
   AttendanceSummaryResponse,
   EnrollmentResponse,
   AttendanceStatus,
+  BulkMarkEntry,
+  BulkMarkBody,
 } from '@/types/api';
 
 // ---------------------------------------------------------------------------
@@ -92,7 +97,7 @@ function SessionSheet({ session, pscId }: SheetProps) {
     queryKey: ['offerings', pscId, 'enrollments'],
     queryFn: () =>
       api
-        .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=ACTIVE`)
+        .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=${ENROLLMENT_STATUS.ACTIVE}`)
         .then((r) => r.data),
   });
   // Only STUDENT-role enrollments are tracked for attendance
@@ -145,13 +150,30 @@ function SessionSheet({ session, pscId }: SheetProps) {
     },
   });
 
+  // One request for the whole roster. Firing a mutation per student instead
+  // means a 60-student class issues 60 writes, each of which recomputes and
+  // re-caches that student's summary.
+  const bulkMutation = useMutation({
+    mutationFn: (records: BulkMarkEntry[]) =>
+      api
+        .post<AttendanceRecordResponse[]>(`/sessions/${session.id}/records/bulk`, {
+          records,
+        } satisfies BulkMarkBody)
+        .then((r) => r.data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['sessions', session.id, 'records'], data);
+      queryClient.invalidateQueries({ queryKey: ['sessions', session.id, 'records'] });
+    },
+  });
+
   const markAllPresent = () => {
-    const unrecorded = enrollments.filter(
-      (e) => !recordMap.has(e.studentId) || recordMap.get(e.studentId)?.status !== 'PRESENT',
+    const pending = enrollments.filter(
+      (e) => recordMap.get(e.studentId)?.status !== 'PRESENT',
     );
-    unrecorded.forEach((e) => {
-      markMutation.mutate({ studentId: e.studentId, status: 'PRESENT' });
-    });
+    if (pending.length === 0) return;
+    bulkMutation.mutate(
+      pending.map((e) => ({ studentId: e.studentId, status: 'PRESENT' as const })),
+    );
   };
 
   if (enrollmentsQ.isLoading || recordsQ.isLoading) {
@@ -181,7 +203,7 @@ function SessionSheet({ session, pscId }: SheetProps) {
               size="sm"
               variant="secondary"
               onClick={markAllPresent}
-              loading={markMutation.isPending}
+              loading={bulkMutation.isPending}
             >
               Mark all present
             </Button>
@@ -227,11 +249,12 @@ function SessionSheet({ session, pscId }: SheetProps) {
                 return (
                   <tr key={e.studentId} className="border-b border-gray-50 last:border-0">
                     <td className="px-4 py-2.5">
-                      <span
-                        className="text-sm text-gray-700"
-                      >
-                        {displayName}
-                      </span>
+                      <span className="text-sm text-gray-700">{displayName}</span>
+                      {e.studentNumber && (
+                        <span className="ml-2 font-mono text-xs text-gray-400">
+                          {e.studentNumber}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex gap-1">
@@ -306,7 +329,9 @@ interface CreateSessionFormProps {
 function CreateSessionForm({ pscId, onClose }: CreateSessionFormProps) {
   const queryClient = useQueryClient();
 
-  const today = new Date().toISOString().split('T')[0];
+  // Local date — toISOString() is UTC and rolls back a day for early-morning
+  // sessions in UTC+n zones.
+  const today = todayApiDate();
 
   const {
     register,
@@ -384,7 +409,7 @@ function ClassRosterView({ pscId }: { pscId: UUID; isAdmin: boolean }) {
     queryKey: ['offerings', pscId, 'enrollments'],
     queryFn: () =>
       api
-        .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=ACTIVE`)
+        .get<EnrollmentResponse[]>(`/offerings/${pscId}/enrollments?status=${ENROLLMENT_STATUS.ACTIVE}`)
         .then((r) => r.data),
   });
   // Only STUDENT-role enrollments are tracked for attendance
@@ -759,9 +784,12 @@ function StudentView({ pscId }: { pscId: UUID }) {
               />
             </div>
             {summary.percentage < 75 && (
-              <p className="mt-3 text-xs text-red-600">
-                ⚠ Your attendance is below 75%. Please attend classes to avoid
-                consequences.
+              <p className="mt-3 flex items-start gap-1.5 text-xs text-red-600">
+                <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
+                <span>
+                  Your attendance is below 75%. Please attend classes to avoid
+                  consequences.
+                </span>
               </p>
             )}
           </div>

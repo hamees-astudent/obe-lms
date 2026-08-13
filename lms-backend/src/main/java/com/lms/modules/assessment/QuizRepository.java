@@ -30,4 +30,23 @@ public interface QuizRepository extends JpaRepository<Quiz, UUID> {
     AssessmentContextView findEventContext(
             @Param("quizId") UUID quizId,
             @Param("studentId") UUID studentId);
+
+    /**
+     * Whether the student holds an active STUDENT enrollment in the offering the
+     * quiz belongs to. Native, for the same reason as above — the assessment
+     * module does not depend on the enrollment module.
+     */
+    @Query(value = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM   quizzes q
+                JOIN   enrollments e ON e.psc_id = q.psc_id
+                WHERE  q.id          = :quizId
+                AND    e.student_id  = :studentId
+                AND    e.status      = 'ACTIVE'
+                AND    e.course_role = 'STUDENT')
+            """, nativeQuery = true)
+    boolean isStudentEnrolled(
+            @Param("quizId") UUID quizId,
+            @Param("studentId") UUID studentId);
 }

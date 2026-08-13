@@ -14,10 +14,18 @@ import java.util.UUID;
  *
  * <p>Consumed by the {@code notifications} module to:
  * <ul>
+ *   <li>{@code ASSIGNMENT_CREATED}   — notify every enrolled student.</li>
+ *   <li>{@code QUIZ_CREATED}         — notify every enrolled student.</li>
+ *   <li>{@code MATERIAL_ADDED}       — notify every enrolled student.</li>
  *   <li>{@code ASSIGNMENT_SUBMITTED} — notify the teacher/assistant.</li>
  *   <li>{@code ASSIGNMENT_GRADED}    — notify the student.</li>
  *   <li>{@code QUIZ_SUBMITTED}       — notify the teacher/assistant.</li>
  * </ul>
+ *
+ * <p>The {@code *_CREATED} and {@code MATERIAL_ADDED} actions fan out to a whole
+ * class, so they carry {@link #pscId} instead of a single student: the consumer
+ * resolves the roster itself rather than the publisher emitting one event per
+ * student.
  */
 @Data
 @Builder
@@ -26,6 +34,12 @@ import java.util.UUID;
 public class AssessmentEvent {
 
     public enum Action {
+        /** New work published to a class — fan-out to enrolled students. */
+        ASSIGNMENT_CREATED,
+        QUIZ_CREATED,
+        MATERIAL_ADDED,
+
+        /** Per-student lifecycle events. */
         ASSIGNMENT_SUBMITTED,
         ASSIGNMENT_GRADED,
         QUIZ_SUBMITTED
@@ -40,10 +54,17 @@ public class AssessmentEvent {
 
     private Action action;
 
-    // ── Student ──────────────────────────────────────────────────────────────
+    // ── Student (per-student actions only) ───────────────────────────────────
     private UUID   studentId;
     private String studentEmail;
     private String studentName;
+
+    // ── Class (fan-out actions only) ─────────────────────────────────────────
+    /** Course offering whose roster should be notified. */
+    private UUID   pscId;
+
+    /** Free-form detail for the notification body, e.g. a due date or material type. */
+    private String detail;
 
     // ── Assessment context ───────────────────────────────────────────────────
     /** {@code assignments.id} or {@code quizzes.id} depending on {@link Action}. */

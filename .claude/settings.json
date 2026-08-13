@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"--- exit $? ---\")",
+      "Bash(python3 -)",
+      "Bash(python3 -c \"import json;print\\(json.load\\(open\\('package.json'\\)\\)['scripts']\\)\")",
+      "Bash(npx tsc *)",
+      "Bash(mvn -q -o compile -DskipTests)",
+      "Bash(mvn -q compile -DskipTests)",
+      "Bash(npm run *)",
+      "Bash(mvn -o compile -DskipTests)",
+      "Bash(grep -n \"user_id\\\\|psc_id\" src/main/resources/../../../src/main/resources/db/migration/V0006__create_courses_tables.sql 2>/dev/null | head; cd /home/no-one/Desktop/FYP/FYP-I/lms-backend && grep -n \"course_assistants\" -A 12 src/main/resources/db/migration/V0006__create_courses_tables.sql)",
+      "Read(//home/no-one/Desktop/FYP/FYP-I/lms-backend/src/main/java/com/lms/src/main/resources/db/migration/**)",
+      "Bash(mvn -o test -Dtest=AttendanceServiceTest -DfailIfNoTests=false)",
+      "Bash(timeout 500 mvn test -Dtest=AttendanceServiceTest -DfailIfNoTests=false -DskipFrontend=true)",
+      "Bash(timeout 500 mvn test -Dtest='AssessmentServiceTest,AttendanceServiceTest' -DfailIfNoTests=false)",
+      "Bash(sed -n '/public CourseSummaryResponse createCourse/,/^    }/p' src/main/java/com/lms/modules/courses/CourseService.java)",
+      "Bash(sed -n '/public ProgramSummaryResponse createProgram\\\\|public ProgramDetailResponse createProgram/,/^    }/p' src/main/java/com/lms/modules/programs/ProgramService.java)",
+      "Bash(timeout 500 mvn test -Dtest='InstitutionalCodesTest' -DfailIfNoTests=false)",
+      "Bash(timeout 500 mvn test -Dtest='LmsApplicationModulesTest' -DfailIfNoTests=false)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(python3 -c \"import json;d=json.load\\(open\\('package.json'\\)\\);print\\(json.dumps\\(d.get\\('devDependencies',{}\\),indent=1\\)\\)\")",
+      "Bash(node scripts/check-conventions.mjs)",
+      "Bash(timeout 500 mvn test -Dtest='AssessmentServiceTest,AttendanceServiceTest,InstitutionalCodesTest' -DfailIfNoTests=false)",
+      "Bash(timeout 500 mvn test -Dtest='NotificationServiceTest' -DfailIfNoTests=false)",
+      "Bash(cd /home/no-one/Desktop/FYP/FYP-I/lms-e2e && ls node_modules/.bin 2>/dev/null | grep -i playwright; ls ~/.cache/ms-playwright 2>/dev/null | head)",
+      "Read(//home/no-one/.cache/ms-playwright/**)",
+      "Bash(node /tmp/claude-1000/-home-no-one-Desktop-FYP-FYP-I/4c72e7cd-c61f-4f61-ae0b-428180a070cc/scratchpad/responsive-check.mjs)",
+      "Bash(awk -F: '$1>250 && $1<330')",
+      "Bash(timeout 600 mvn test)",
+      "Bash(grep -rn \"^\\\\s*test\\(.*{ *[a-z]*, *teacherToken\\\\|{ teacherToken\" tests/)",
+      "Bash(grep -rn \"Bearer \\\\${teacherToken}\\\\|, teacherToken\\)\" tests/)",
+      "Bash(timeout 500 mvn test -Dtest='GlobalExceptionHandlerTest' -DfailIfNoTests=false)"
+    ]
+  }
+}

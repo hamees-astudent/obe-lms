@@ -23,7 +23,7 @@ import java.util.UUID;
  *
  * <pre>
  * Admin (ROLE_ADMIN, secured by SecurityConfig /api/admin/**):
- *   GET    /api/admin/users                       — paginated list (filters: role, status)
+ *   GET    /api/admin/users                       — paginated list (filters: role, status, q)
  *   POST   /api/admin/users                       — create user
  *   GET    /api/admin/users/{id}                  — get user detail
  *   PUT    /api/admin/users/{id}                  — update name / email
@@ -57,9 +57,10 @@ public class UserController {
     @GetMapping("/api/admin/users")
     public Page<UserSummaryResponse> listUsers(
             @RequestParam(required = false) Role role,
+            @RequestParam(required = false) String q,
             @RequestParam(required = false) String status,
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
-        return userService.listUsers(role, status, pageable);
+        return userService.listUsers(role, status, q, pageable);
     }
 
     @PostMapping("/api/admin/users")

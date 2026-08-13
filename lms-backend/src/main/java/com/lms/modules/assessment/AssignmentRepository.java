@@ -30,4 +30,23 @@ public interface AssignmentRepository extends JpaRepository<Assignment, UUID> {
     AssessmentContextView findEventContext(
             @Param("assignmentId") UUID assignmentId,
             @Param("studentId") UUID studentId);
+
+    /**
+     * Whether the student holds an active STUDENT enrollment in the offering the
+     * assignment belongs to. Native, for the same reason as above — the
+     * assessment module does not depend on the enrollment module.
+     */
+    @Query(value = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM   assignments a
+                JOIN   enrollments e ON e.psc_id = a.psc_id
+                WHERE  a.id          = :assignmentId
+                AND    e.student_id  = :studentId
+                AND    e.status      = 'ACTIVE'
+                AND    e.course_role = 'STUDENT')
+            """, nativeQuery = true)
+    boolean isStudentEnrolled(
+            @Param("assignmentId") UUID assignmentId,
+            @Param("studentId") UUID studentId);
 }

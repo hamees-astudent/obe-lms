@@ -1,6 +1,7 @@
 package com.lms.modules.programs;
 
 import com.lms.infrastructure.messaging.KafkaEventPublisher;
+import com.lms.shared.InstitutionalCodes;
 import com.lms.modules.programs.dto.*;
 import com.lms.shared.CacheNames;
 import com.lms.shared.events.SemesterEvent;
@@ -32,19 +33,33 @@ public class ProgramService {
 
     @Transactional
     public ProgramSummaryResponse createProgram(CreateProgramRequest req) {
-        if (programRepository.existsByCode(req.code())) {
+        String code = InstitutionalCodes.normalise(req.code());
+        if (programRepository.existsByCode(code)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Program code already exists: " + req.code());
+                    "Program code already exists: " + code);
         }
         var program = new Program();
         program.setName(req.name());
-        program.setCode(req.code());
+        program.setCode(code);
         program.setDescription(req.description());
         program.setDurationYears(req.durationYears());
         return toSummary(programRepository.save(program));
     }
 
+    /**
+     * Rejects a status filter that is not a real status. Silently returning an
+     * empty page instead makes a typo look like "there is no data", which is how
+     * a whole module can appear blank to every user.
+     */
+    private void requireValidStatus(String status, java.util.Set<String> allowed, String what) {
+        if (status != null && !allowed.contains(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unknown " + what + " status '" + status + "'; expected one of " + allowed);
+        }
+    }
+
     public Page<ProgramSummaryResponse> listPrograms(String status, Pageable pageable) {
+        requireValidStatus(status, Program.STATUSES, "program");
         if (status != null) {
             return programRepository.findAllByStatus(status, pageable).map(this::toSummary);
         }
@@ -163,6 +178,7 @@ public class ProgramService {
     }
 
     public List<SemesterResponse> listSemesters(UUID programId, String status) {
+        requireValidStatus(status, Semester.STATUSES, "semester");
         requireProgram(programId);
         List<Semester> semesters = (status != null)
                 ? semesterRepository.findAllByProgramIdAndStatus(programId, status)

@@ -58,7 +58,7 @@ export default function Modal({ open, onClose, title, children, maxWidth = 'max-
             <button
               onClick={onClose}
               aria-label="Close modal"
-              className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              className="rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
             >
               <X size={18} />
             </button>

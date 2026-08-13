@@ -38,4 +38,21 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
     Optional<AttendanceContextView> findAlertContext(
             @Param("pscId") UUID pscId,
             @Param("studentId") UUID studentId);
+
+    /**
+     * Whether the user runs this offering — its teacher of record, or one of its
+     * assigned assistants. Native, to avoid a cross-module ORM dependency on the
+     * courses module.
+     */
+    @Query(value = """
+            SELECT EXISTS (
+                SELECT 1 FROM program_semester_courses psc
+                WHERE  psc.id = :pscId AND psc.teacher_id = :userId
+                UNION ALL
+                SELECT 1 FROM course_assistants ca
+                WHERE  ca.psc_id = :pscId AND ca.user_id = :userId)
+            """, nativeQuery = true)
+    boolean isStaffOfOffering(
+            @Param("pscId") UUID pscId,
+            @Param("userId") UUID userId);
 }

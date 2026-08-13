@@ -9,5 +9,7 @@ public interface QuizQuestionRepository extends JpaRepository<QuizQuestion, UUID
 
     List<QuizQuestion> findAllByQuizIdOrderByOrderIndexAsc(UUID quizId);
 
+    long countByQuizId(UUID quizId);
+
     void deleteAllByQuizId(UUID quizId);
 }

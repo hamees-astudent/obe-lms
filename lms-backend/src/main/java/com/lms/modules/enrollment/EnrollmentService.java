@@ -6,6 +6,7 @@ import com.lms.shared.CacheNames;
 import com.lms.shared.events.EnrollmentEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
@@ -27,6 +28,7 @@ public class EnrollmentService {
 
     private final EnrollmentRepository   enrollmentRepository;
     private final KafkaEventPublisher    kafkaEventPublisher;
+    private final CacheManager           cacheManager;
 
     // ── Enroll ────────────────────────────────────────────────────────────────
 
@@ -111,21 +113,42 @@ public class EnrollmentService {
     }
 
     public List<EnrollmentResponse> listByStudentAndStatus(UUID studentId, String status) {
+        requireValidStatus(status);
         return enrollmentRepository.findAllByStudentIdAndStatus(studentId, status)
                 .stream().map(this::toResponse).toList();
     }
 
+    /**
+     * Rejects an unknown status filter. Without this an unrecognised value —
+     * a client sending {@code ENROLLED} instead of {@code ACTIVE}, say — comes
+     * back as an empty list that is indistinguishable from "no enrollments",
+     * which is how a whole module can look empty for every student.
+     */
+    private void requireValidStatus(String status) {
+        if (status != null && !Enrollment.STATUSES.contains(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unknown enrollment status '" + status + "'; expected one of "
+                            + Enrollment.STATUSES);
+        }
+    }
+
     public List<EnrollmentResponse> listByPsc(UUID pscId, String status) {
+        requireValidStatus(status);
         List<Enrollment> rows = (status != null)
                 ? enrollmentRepository.findAllByPscIdAndStatus(pscId, status)
                 : enrollmentRepository.findAllByPscId(pscId);
-        Map<UUID, String> nameMap = enrollmentRepository.findStudentNamesByPscId(pscId)
+        Map<UUID, StudentNameView> identities = enrollmentRepository.findStudentNamesByPscId(pscId)
                 .stream()
                 .collect(Collectors.toMap(
                         v -> UUID.fromString(v.getStudentId()),
-                        StudentNameView::getStudentName));
+                        v -> v));
         return rows.stream()
-                .map(e -> toResponse(e, nameMap.get(e.getStudentId())))
+                .map(e -> {
+                    StudentNameView identity = identities.get(e.getStudentId());
+                    return toResponse(e,
+                            identity != null ? identity.getStudentName() : null,
+                            identity != null ? identity.getStudentNumber() : null);
+                })
                 .toList();
     }
 
@@ -141,9 +164,19 @@ public class EnrollmentService {
                         "Enrollment not found: " + id));
     }
 
-    @CacheEvict(value = CacheNames.ENROLLMENT, key = "#studentId")
+    /**
+     * Drops the student's cached enrollment list.
+     *
+     * <p>Goes through the {@link CacheManager} rather than {@code @CacheEvict}:
+     * this is called from {@code enroll}/{@code drop} on the same bean, and a
+     * self-invocation bypasses the caching proxy — leaving a dropped course
+     * visible in "my courses" until the entry expires on its own.
+     */
     public void evictStudentCache(UUID studentId) {
-        // side-effect only
+        var cache = cacheManager.getCache(CacheNames.ENROLLMENT);
+        if (cache != null) {
+            cache.evict(studentId);
+        }
     }
 
     private void publishEvent(Enrollment enrollment, EnrollmentEvent.Action action) {
@@ -166,11 +199,12 @@ public class EnrollmentService {
     }
 
     private EnrollmentResponse toResponse(Enrollment e) {
-        return toResponse(e, null);
+        return toResponse(e, null, null);
     }
 
-    private EnrollmentResponse toResponse(Enrollment e, String studentName) {
-        return new EnrollmentResponse(e.getId(), e.getPscId(), e.getStudentId(), studentName,
-                e.getCourseRole(), e.getStatus(), e.getEnrolledAt(), e.getDroppedAt(), e.getCreatedAt());
+    private EnrollmentResponse toResponse(Enrollment e, String studentName, String studentNumber) {
+        return new EnrollmentResponse(e.getId(), e.getPscId(), e.getStudentId(),
+                studentName, studentNumber, e.getCourseRole(), e.getStatus(),
+                e.getEnrolledAt(), e.getDroppedAt(), e.getCreatedAt());
     }
 }

@@ -71,6 +71,15 @@ public class FileController {
         return fileService.listByContext(context, contextId);
     }
 
+    /**
+     * Resolve a file by its storage object key — the reference assignment
+     * submissions keep. Roles: any authenticated user.
+     */
+    @GetMapping("/by-key")
+    public UploadedFileResponse getByKey(@RequestParam String key) {
+        return fileService.getByObjectKey(key);
+    }
+
     // ── Presigned URL ─────────────────────────────────────────────────────────
 
     /**

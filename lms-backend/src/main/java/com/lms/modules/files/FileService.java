@@ -78,6 +78,21 @@ public class FileService {
         return toResponse(entity);
     }
 
+    /**
+     * Look up a file by its storage object key.
+     *
+     * <p>Assignment submissions record the object key rather than the file id,
+     * so this is how a submitted file gets resolved back to something
+     * downloadable.
+     */
+    @Transactional(readOnly = true)
+    public UploadedFileResponse getByObjectKey(String objectKey) {
+        return fileRepo.findByObjectKey(objectKey)
+                .map(this::toResponse)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "File not found for key: " + objectKey));
+    }
+
     // ── Presigned URL ────────────────────────────────────────────────────────
 
     /**

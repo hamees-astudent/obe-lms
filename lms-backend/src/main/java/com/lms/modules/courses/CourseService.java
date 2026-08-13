@@ -1,8 +1,12 @@
 package com.lms.modules.courses;
 
+import com.lms.infrastructure.messaging.KafkaEventPublisher;
+import com.lms.shared.InstitutionalCodes;
+import com.lms.shared.events.AssessmentEvent;
 import com.lms.modules.courses.dto.*;
 import com.lms.shared.CacheNames;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
@@ -15,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -26,17 +31,22 @@ public class CourseService {
     private final CloRepository                 cloRepository;
     private final CloPloMappingRepository       mappingRepository;
     private final CourseMaterialRepository      materialRepository;
+    private final MaterialCloMappingRepository  materialCloMappingRepository;
+    private final KafkaEventPublisher           kafkaEventPublisher;
 
     // ── Course CRUD ───────────────────────────────────────────────────────────
 
     @Transactional
     public CourseSummaryResponse createCourse(CreateCourseRequest req) {
-        if (courseRepository.existsByCode(req.code())) {
+        // Codes are compared and stored upper-case, so "cs-363" and "CS-363"
+        // are the same course rather than two.
+        String code = InstitutionalCodes.normalise(req.code());
+        if (courseRepository.existsByCode(code)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Course code already exists: " + req.code());
+                    "Course code already exists: " + code);
         }
         var course = new Course();
-        course.setCode(req.code());
+        course.setCode(code);
         course.setName(req.name());
         course.setDescription(req.description());
         course.setCreditHours(req.creditHours());
@@ -44,6 +54,11 @@ public class CourseService {
     }
 
     public Page<CourseSummaryResponse> listCourses(String status, Pageable pageable) {
+        // An unrecognised filter must fail, not come back as an empty catalog.
+        if (status != null && !Course.STATUSES.contains(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unknown course status '" + status + "'; expected one of " + Course.STATUSES);
+        }
         if (status != null) {
             return courseRepository.findAllByStatus(status, pageable).map(this::toCourseSummary);
         }
@@ -282,12 +297,49 @@ public class CourseService {
         material.setContent(req.content() != null ? req.content() : new java.util.HashMap<>());
         material.setVisible(req.visible());
         material.setOrderIndex(req.orderIndex());
-        return toMaterialResponse(materialRepository.save(material));
+        var saved = materialRepository.save(material);
+
+        announceMaterial(saved);
+
+        return toMaterialResponse(saved);
     }
+
+    /**
+     * Tells the class that new material is available.
+     *
+     * <p>Hidden material is not announced — a teacher staging next week's
+     * lecture should not page the class — so the announcement instead fires on
+     * the transition to visible in {@link #updateMaterial}.
+     */
+    private void announceMaterial(CourseMaterial material) {
+        if (!material.isVisible()) {
+            return;
+        }
+        try {
+            kafkaEventPublisher.publishAssessmentEventAfterCommit(AssessmentEvent.builder()
+                    .action(AssessmentEvent.Action.MATERIAL_ADDED)
+                    .pscId(material.getPsc().getId())
+                    .assessmentId(material.getId())
+                    .assessmentTitle(material.getTitle())
+                    .detail(MATERIAL_TYPE_LABELS.getOrDefault(material.getType(), "Material"))
+                    .build());
+        } catch (Exception e) {
+            log.warn("Failed to publish MATERIAL_ADDED event: {}", e.getMessage());
+        }
+    }
+
+    private static final java.util.Map<String, String> MATERIAL_TYPE_LABELS = java.util.Map.of(
+            "DOCUMENT", "Document",
+            "URL", "Link",
+            "VIDEO_LINK", "Video",
+            "ANNOUNCEMENT", "Announcement",
+            "ASSIGNMENT", "Assignment",
+            "QUIZ", "Quiz");
 
     @Transactional
     public CourseMaterialResponse updateMaterial(UUID id, UpdateCourseMaterialRequest req) {
         var material = requireMaterial(id);
+        boolean wasVisible = material.isVisible();
         material.setTitle(req.title());
         material.setDescription(req.description());
         material.setContent(req.content() != null ? req.content() : new java.util.HashMap<>());
@@ -295,7 +347,14 @@ public class CourseService {
         material.setOrderIndex(req.orderIndex());
         // Evict the list cache for this material's psc
         evictMaterialCache(material.getPsc().getId());
-        return toMaterialResponse(materialRepository.save(material));
+        var saved = materialRepository.save(material);
+
+        // Publishing material that was hidden is the moment students can see it.
+        if (!wasVisible && saved.isVisible()) {
+            announceMaterial(saved);
+        }
+
+        return toMaterialResponse(saved);
     }
 
     @Transactional
@@ -327,6 +386,76 @@ public class CourseService {
                     "CLO " + cloId + " does not belong to course " + courseId);
         }
         return clo;
+    }
+
+    // ── Material → CLO mappings ───────────────────────────────────────────────
+
+    public MaterialCloMappingResponse addMaterialCloMapping(
+            UUID materialId, CreateMaterialCloMappingRequest req) {
+        var material = requireMaterial(materialId);
+        var clo      = requireCloById(req.cloId());
+
+        // The CLO must belong to the course this material is taught in;
+        // otherwise a lecture could be mapped to another course's outcome.
+        UUID materialCourseId = material.getPsc().getCourse().getId();
+        if (!clo.getCourse().getId().equals(materialCourseId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "CLO " + clo.getCode() + " belongs to a different course");
+        }
+        if (materialCloMappingRepository.existsByIdMaterialIdAndIdCloId(materialId, req.cloId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Material is already mapped to CLO " + clo.getCode());
+        }
+
+        var mapping = new MaterialCloMapping();
+        mapping.setId(new MaterialCloMappingId(materialId, req.cloId()));
+        mapping.setMaterial(material);
+        mapping.setClo(clo);
+        mapping.setWeight(req.weight());
+        return toMaterialCloResponse(materialCloMappingRepository.save(mapping));
+    }
+
+    public void removeMaterialCloMapping(UUID materialId, UUID cloId) {
+        var id = new MaterialCloMappingId(materialId, cloId);
+        if (!materialCloMappingRepository.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Mapping not found for material " + materialId + " → CLO " + cloId);
+        }
+        materialCloMappingRepository.deleteById(id);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MaterialCloMappingResponse> listMaterialCloMappings(UUID materialId) {
+        requireMaterial(materialId);
+        return materialCloMappingRepository.findAllByMaterial_Id(materialId)
+                .stream().map(this::toMaterialCloResponse).toList();
+    }
+
+    // ── OBE coverage report ───────────────────────────────────────────────────
+
+    /**
+     * Which CLOs of a course are taught, measured and rolled up — and which are
+     * not. Surfaces the gaps that make an OBE report unusable at review time.
+     */
+    @Transactional(readOnly = true)
+    public List<CloCoverageResponse> getCloCoverage(UUID courseId) {
+        requireCourse(courseId);
+        return cloRepository.findCoverageByCourseId(courseId).stream()
+                .map(v -> new CloCoverageResponse(
+                        UUID.fromString(v.getCloId()),
+                        v.getCloCode(),
+                        v.getCloTitle(),
+                        v.getMaterialCount(),
+                        v.getAssessmentCount(),
+                        v.getPloMappingCount()))
+                .toList();
+    }
+
+    private MaterialCloMappingResponse toMaterialCloResponse(MaterialCloMapping m) {
+        return new MaterialCloMappingResponse(
+                m.getId().getMaterialId(), m.getId().getCloId(),
+                m.getClo().getCode(), m.getClo().getTitle(),
+                m.getWeight(), m.getCreatedAt());
     }
 
     private Clo requireCloById(UUID cloId) {

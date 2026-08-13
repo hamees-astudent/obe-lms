@@ -8,6 +8,9 @@ import {
   BookOpen, Calendar, Trash2, Lock, Unlock,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { toast } from '@/components/ui/Toast';
+import QueryError from '@/components/ui/QueryError';
+import { codeField, CODE_MESSAGE } from '@/lib/codes';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -26,7 +29,7 @@ import type {
 
 const programSchema = z.object({
   name:          z.string().min(1, 'Name required').max(180),
-  code:          z.string().min(1, 'Code required').max(20).regex(/^[A-Z0-9_]+$/, 'Uppercase letters, digits, underscores only'),
+  code:          codeField,
   description:   z.string().optional(),
   durationYears: z.coerce.number().min(1).max(10),
 });
@@ -65,7 +68,7 @@ function PloPanel({ programId }: { programId: UUID }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<PloResponse | null>(null);
 
-  const { data: plos = [], isLoading } = useQuery<PloResponse[]>({
+  const { data: plos = [], isLoading, isError, error, refetch } = useQuery<PloResponse[]>({
     queryKey: ['plos', programId],
     queryFn: () => api.get(`/programs/${programId}/plos`).then((r) => r.data),
   });
@@ -85,7 +88,10 @@ function PloPanel({ programId }: { programId: UUID }) {
 
   const deleteMut = useMutation({
     mutationFn: (id: UUID) => api.delete(`/admin/programs/${programId}/plos/${id}`),
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      toast.success('PLO deleted.');
+      invalidate();
+    },
   });
 
   const addForm  = useForm<PloForm>({ resolver: zodResolver(ploSchema), defaultValues: { orderIndex: (plos.length || 0) + 1 } });
@@ -105,7 +111,9 @@ function PloPanel({ programId }: { programId: UUID }) {
         </Button>
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <QueryError error={error} onRetry={() => refetch()} compact />
+      ) : isLoading ? (
         <div className="flex justify-center py-4"><Spinner /></div>
       ) : plos.length === 0 ? (
         <p className="text-sm text-gray-400 text-center py-4">No PLOs defined yet.</p>
@@ -119,12 +127,12 @@ function PloPanel({ programId }: { programId: UUID }) {
                 {p.description && <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>}
               </div>
               <div className="flex gap-1 shrink-0 ml-4">
-                <button onClick={() => openEdit(p)} className="rounded p-1 text-gray-400 hover:bg-white hover:text-gray-700 transition">
+                <button onClick={() => openEdit(p)} className="rounded p-2 text-gray-400 hover:bg-white hover:text-gray-700 transition">
                   <Edit2 size={14} />
                 </button>
                 <button
                   onClick={() => { if (confirm(`Delete PLO "${p.code}"?`)) deleteMut.mutate(p.id); }}
-                  className="rounded p-1 text-gray-400 hover:bg-white hover:text-red-600 transition"
+                  className="rounded p-2 text-gray-400 hover:bg-white hover:text-red-600 transition"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -137,7 +145,7 @@ function PloPanel({ programId }: { programId: UUID }) {
       {/* Add PLO Modal */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add PLO">
         <form onSubmit={addForm.handleSubmit((d) => addMut.mutate(d))} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
               <Input {...addForm.register('code')} placeholder="PLO1" />
@@ -171,7 +179,7 @@ function PloPanel({ programId }: { programId: UUID }) {
       {/* Edit PLO Modal */}
       <Modal open={!!editing} onClose={() => setEditing(null)} title="Edit PLO">
         <form onSubmit={editForm.handleSubmit((d) => editing && editMut.mutate({ id: editing.id, body: d }))} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
               <Input {...editForm.register('code')} />
@@ -221,7 +229,8 @@ function SemestersPanel({ programId }: { programId: UUID }) {
 
   const addMut = useMutation({
     mutationFn: (body: SemesterForm) => api.post(`/admin/programs/${programId}/semesters`, body),
-    onSuccess: () => { invalidate(); setShowAdd(false); },
+    onSuccess: () => {
+      toast.success('Semester created.'); invalidate(); setShowAdd(false); },
   });
 
   const editMut = useMutation({
@@ -265,7 +274,7 @@ function SemestersPanel({ programId }: { programId: UUID }) {
         <Input {...form.register('name')} placeholder="e.g. Semester 1 2024/2025" />
         {form.formState.errors.name && <p className="text-xs text-red-500 mt-1">{form.formState.errors.name.message}</p>}
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
           <Input type="date" {...form.register('startDate')} />
@@ -307,13 +316,13 @@ function SemestersPanel({ programId }: { programId: UUID }) {
                 </p>
               </div>
               <div className="flex gap-1 shrink-0 ml-4">
-                <button onClick={() => openEdit(s)} className="rounded p-1 text-gray-400 hover:bg-white hover:text-gray-700 transition" title="Edit">
+                <button onClick={() => openEdit(s)} className="rounded p-2 text-gray-400 hover:bg-white hover:text-gray-700 transition" title="Edit">
                   <Edit2 size={14} />
                 </button>
                 {s.status !== 'CLOSED' && (
                   <button
                     onClick={() => closeMut.mutate(s.id)}
-                    className="rounded p-1 text-gray-400 hover:bg-white hover:text-orange-600 transition"
+                    className="rounded p-2 text-gray-400 hover:bg-white hover:text-orange-600 transition"
                     title="Close semester"
                   >
                     <Lock size={14} />
@@ -322,7 +331,7 @@ function SemestersPanel({ programId }: { programId: UUID }) {
                 {s.status === 'CLOSED' && (
                   <button
                     onClick={() => reopenMut.mutate(s.id)}
-                    className="rounded p-1 text-gray-400 hover:bg-white hover:text-green-600 transition"
+                    className="rounded p-2 text-gray-400 hover:bg-white hover:text-green-600 transition"
                     title="Reopen semester"
                   >
                     <Unlock size={14} />
@@ -378,19 +387,19 @@ function ProgramRow({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => onEdit(program)} className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition" title="Edit">
+          <button onClick={() => onEdit(program)} className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition" title="Edit">
             <Edit2 size={15} />
           </button>
           <button
             onClick={() => onToggleStatus(program)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 transition"
+            className="rounded p-2 text-gray-400 hover:bg-gray-100 transition"
             title={program.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
           >
             {program.status === 'ACTIVE' ? <ToggleRight size={18} className="text-green-500" /> : <ToggleLeft size={18} className="text-gray-400" />}
           </button>
           <button
             onClick={() => setExpanded((e) => !e)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 transition"
+            className="rounded p-2 text-gray-400 hover:bg-gray-100 transition"
             title="Expand"
           >
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -477,7 +486,7 @@ export default function ProgramsPage() {
     submitLabel: string;
   }) => (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Program Name</label>
           <Input {...form.register('name')} placeholder="Bachelor of Computer Science" />
@@ -485,7 +494,7 @@ export default function ProgramsPage() {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
-          <Input {...form.register('code')} placeholder="BCS" />
+          <Input {...form.register('code')} placeholder="BSCS" hint={CODE_MESSAGE} />
           {form.formState.errors.code && <p className="text-xs text-red-500 mt-1">{form.formState.errors.code.message}</p>}
         </div>
       </div>

@@ -71,10 +71,66 @@ public class NotificationService {
 
     public void handleAssessmentEvent(AssessmentEvent event) {
         switch (event.getAction()) {
+            case ASSIGNMENT_CREATED   -> handleClassAnnouncement(event, "New Assignment",
+                    "ASSIGNMENT_CREATED", "ASSIGNMENT");
+            case QUIZ_CREATED         -> handleClassAnnouncement(event, "New Quiz",
+                    "QUIZ_CREATED", "QUIZ");
+            case MATERIAL_ADDED       -> handleClassAnnouncement(event, "New Material",
+                    "MATERIAL_ADDED", "MATERIAL");
             case ASSIGNMENT_SUBMITTED -> handleAssignmentSubmitted(event);
             case ASSIGNMENT_GRADED    -> handleAssignmentGraded(event);
             case QUIZ_SUBMITTED       -> handleQuizSubmitted(event);
         }
+    }
+
+    /**
+     * Fans a "something new was published" event out to a class.
+     *
+     * <p>The event carries the offering rather than a student, so the roster is
+     * resolved here — one notification row per actively-enrolled student, plus
+     * one email each. Dropped and completed enrollments are excluded: they are
+     * no longer taking the course.
+     */
+    private void handleClassAnnouncement(AssessmentEvent event, String titlePrefix,
+                                         String eventType, String entityType) {
+        if (event.getPscId() == null) {
+            log.warn("{} event {} has no pscId — cannot resolve recipients",
+                    event.getAction(), event.getEventId());
+            return;
+        }
+
+        List<UserRow> students = dataRepo.findActiveStudentsByPsc(event.getPscId());
+        if (students.isEmpty()) {
+            log.debug("{} event {}: no active students enrolled in psc={}",
+                    event.getAction(), event.getEventId(), event.getPscId());
+            return;
+        }
+
+        String courseCode = dataRepo.findCourseByPsc(event.getPscId())
+                .map(NotificationDataRepository.CourseRow::code)
+                .orElse("your course");
+
+        String title = titlePrefix + " — " + courseCode;
+        String body = String.format("%s '%s' has been posted in %s.%s",
+                titlePrefix, event.getAssessmentTitle(), courseCode,
+                event.getDetail() != null ? " " + event.getDetail() + "." : "");
+
+        // One batched insert for the whole class rather than a round trip each.
+        notifRepo.saveAll(students.stream()
+                .map(student -> build(student.id(), title, body, eventType,
+                        entityType, event.getAssessmentId()))
+                .toList());
+
+        // Emails are @Async, so this only queues them.
+        for (UserRow student : students) {
+            emailService.sendEmail(student.email(), "[LMS] " + title,
+                    "Dear " + student.name() + ",\n\n" + body
+                            + "\n\nLog in to the LMS portal to view it."
+                            + "\n\n— LMS Team");
+        }
+
+        log.info("{} processed: {} students notified, psc={}",
+                event.getAction(), students.size(), event.getPscId());
     }
 
     private void handleAssignmentSubmitted(AssessmentEvent event) {
@@ -241,6 +297,12 @@ public class NotificationService {
 
     private Notification persist(UUID recipientId, String title, String body,
                                  String eventType, String referenceType, UUID referenceId) {
+        return notifRepo.save(
+                build(recipientId, title, body, eventType, referenceType, referenceId));
+    }
+
+    private Notification build(UUID recipientId, String title, String body,
+                               String eventType, String referenceType, UUID referenceId) {
         Notification n = new Notification();
         n.setRecipientId(recipientId);
         n.setTitle(title);
@@ -248,7 +310,7 @@ public class NotificationService {
         n.setEventType(eventType);
         n.setReferenceType(referenceType);
         n.setReferenceId(referenceId);
-        return notifRepo.save(n);
+        return n;
     }
 
     public UUID resolveUserId(String email) {

@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -42,7 +43,36 @@ public class AssessmentService {
         a.setDueDate(req.getDueDate());
         a.setAllowLateSubmission(req.isAllowLateSubmission());
         a.setLatePenaltyPercent(req.getLatePenaltyPercent());
-        return toAssignmentResponse(assignmentRepository.save(a));
+        Assignment saved = assignmentRepository.save(a);
+
+        announceToClass(AssessmentEvent.Action.ASSIGNMENT_CREATED, saved.getPscId(),
+                saved.getId(), saved.getTitle(),
+                "Due " + saved.getDueDate() + " · " + saved.getTotalMarks() + " marks");
+
+        return toAssignmentResponse(saved);
+    }
+
+    /**
+     * Tells a class that new work exists.
+     *
+     * <p>Creating an assignment, quiz or material used to be silent: the only
+     * assessment events published were about *submissions*, so students were
+     * never told there was anything to submit. The roster is resolved by the
+     * notifications module, so one event covers the whole class.
+     */
+    private void announceToClass(AssessmentEvent.Action action, UUID pscId,
+                                 UUID assessmentId, String title, String detail) {
+        try {
+            kafkaEventPublisher.publishAssessmentEventAfterCommit(AssessmentEvent.builder()
+                    .action(action)
+                    .pscId(pscId)
+                    .assessmentId(assessmentId)
+                    .assessmentTitle(title)
+                    .detail(detail)
+                    .build());
+        } catch (Exception e) {
+            log.warn("Failed to publish {} event: {}", action, e.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)
@@ -79,6 +109,11 @@ public class AssessmentService {
     public AssignmentSubmissionResponse submitAssignment(UUID assignmentId, UUID studentId,
                                                          SubmitAssignmentRequest req) {
         Assignment assignment = findAssignment(assignmentId);
+
+        if (!assignmentRepository.isStudentEnrolled(assignmentId, studentId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You are not enrolled in this course offering");
+        }
 
         validateSubmissionContent(assignment.getSubmissionType(), req);
 
@@ -135,7 +170,9 @@ public class AssessmentService {
                     "Marks obtained cannot exceed total marks (" + assignment.getTotalMarks() + ")");
         }
 
-        sub.setMarksObtained(req.getMarksObtained());
+        BigDecimal awarded = applyLatePenalty(assignment, sub, req.getMarksObtained());
+
+        sub.setMarksObtained(awarded);
         sub.setFeedback(req.getFeedback());
         sub.setGradedBy(gradedBy);
         sub.setGradedAt(LocalDateTime.now());
@@ -155,7 +192,7 @@ public class AssessmentService {
                     .assessmentTitle(assignment.getTitle())
                     .courseCode(ctx.getCourseCode())
                     .courseName(ctx.getCourseName())
-                    .marksObtained(req.getMarksObtained().doubleValue())
+                    .marksObtained(awarded.doubleValue())
                     .totalMarks(assignment.getTotalMarks().doubleValue())
                     .feedback(req.getFeedback())
                     .build());
@@ -198,7 +235,28 @@ public class AssessmentService {
         q.setAvailableUntil(req.getAvailableUntil());
         q.setShuffleQuestions(req.isShuffleQuestions());
         q.setShuffleOptions(req.isShuffleOptions());
-        return toQuizResponse(quizRepository.save(q));
+        Quiz saved = quizRepository.save(q);
+
+        announceToClass(AssessmentEvent.Action.QUIZ_CREATED, saved.getPscId(),
+                saved.getId(), saved.getTitle(), availabilityDetail(saved));
+
+        return toQuizResponse(saved);
+    }
+
+    private String availabilityDetail(Quiz quiz) {
+        StringBuilder detail = new StringBuilder();
+        if (quiz.getAvailableFrom() != null) {
+            detail.append("Opens ").append(quiz.getAvailableFrom());
+        }
+        if (quiz.getAvailableUntil() != null) {
+            detail.append(detail.isEmpty() ? "Closes " : " · closes ")
+                  .append(quiz.getAvailableUntil());
+        }
+        if (quiz.getDurationMinutes() != null) {
+            detail.append(detail.isEmpty() ? "" : " · ")
+                  .append(quiz.getDurationMinutes()).append(" minutes");
+        }
+        return detail.isEmpty() ? null : detail.toString();
     }
 
     @Transactional(readOnly = true)
@@ -303,6 +361,11 @@ public class AssessmentService {
     public QuizSubmissionResponse startQuiz(UUID quizId, UUID studentId) {
         Quiz quiz = findQuiz(quizId);
 
+        if (!quizRepository.isStudentEnrolled(quizId, studentId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You are not enrolled in this course offering");
+        }
+
         LocalDateTime now = LocalDateTime.now();
         if (quiz.getAvailableFrom() != null && now.isBefore(quiz.getAvailableFrom())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Quiz is not yet available");
@@ -314,6 +377,13 @@ public class AssessmentService {
         Optional<QuizSubmission> existing = quizSubmissionRepository.findByQuizIdAndStudentId(quizId, studentId);
         if (existing.isPresent()) {
             return toQuizSubmissionResponse(existing.get());
+        }
+
+        // An empty quiz would start, submit and auto-grade to 0/0 — a silent
+        // zero for the student and no way for them to tell it was our fault.
+        if (questionRepository.countByQuizId(quizId) == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This quiz has no questions yet — ask your instructor to publish them");
         }
 
         QuizSubmission sub = new QuizSubmission();
@@ -332,9 +402,26 @@ public class AssessmentService {
         if (sub.getSubmittedAt() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Quiz already submitted");
         }
+        if (isTimeUp(findQuiz(sub.getQuizId()), sub)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Time is up — this attempt can no longer be edited");
+        }
 
         sub.setAnswers(req.getAnswers());
         return toQuizSubmissionResponse(quizSubmissionRepository.save(sub));
+    }
+
+    /**
+     * Whether the attempt has run past its time limit. The countdown in the
+     * browser is a convenience only — nothing stops a student from leaving the
+     * tab open, so the deadline is decided here.
+     */
+    private boolean isTimeUp(Quiz quiz, QuizSubmission sub) {
+        if (quiz.getDurationMinutes() == null) {
+            return false;
+        }
+        return LocalDateTime.now().isAfter(
+                sub.getStartedAt().plusMinutes(quiz.getDurationMinutes()));
     }
 
     public QuizSubmissionResponse submitQuiz(UUID submissionId, UUID studentId) {
@@ -495,6 +582,31 @@ public class AssessmentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "This assignment requires text submission");
         }
+    }
+
+    /**
+     * Reduces the marks a late submission earns by the assignment's penalty.
+     *
+     * <p>The teacher grades the work on its merits; the deduction is the
+     * system's job. Without this the {@code latePenaltyPercent} the teacher
+     * configured is collected, displayed to students, and then quietly ignored.
+     */
+    private BigDecimal applyLatePenalty(Assignment assignment, AssignmentSubmission sub,
+                                        BigDecimal rawMarks) {
+        BigDecimal penaltyPercent = assignment.getLatePenaltyPercent();
+        // Lateness is read from the timestamps, not the status: grading
+        // overwrites the status with GRADED, so a re-grade would otherwise
+        // hand back the marks the penalty took off.
+        boolean wasLate = sub.getSubmittedAt() != null
+                && sub.getSubmittedAt().isAfter(assignment.getDueDate());
+        if (!wasLate || penaltyPercent == null || penaltyPercent.signum() <= 0) {
+            return rawMarks;
+        }
+        BigDecimal retained = BigDecimal.ONE.subtract(
+                penaltyPercent.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
+        return rawMarks.multiply(retained)
+                .setScale(2, RoundingMode.HALF_UP)
+                .max(BigDecimal.ZERO);
     }
 
     private void validateQuestion(String type, List<String> correctAnswer) {

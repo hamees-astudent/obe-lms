@@ -37,9 +37,17 @@ public class Enrollment extends BaseEntity {
     @Column(name = "course_role", nullable = false, length = 20)
     private String courseRole = "STUDENT";
 
-    /** ACTIVE | DROPPED | COMPLETED */
+    /** ACTIVE | DROPPED | COMPLETED — see {@link #STATUSES}. */
     @Column(nullable = false, length = 20)
     private String status = "ACTIVE";
+
+    public static final String STATUS_ACTIVE    = "ACTIVE";
+    public static final String STATUS_DROPPED   = "DROPPED";
+    public static final String STATUS_COMPLETED = "COMPLETED";
+
+    /** The only values {@link #status} may hold. */
+    public static final java.util.Set<String> STATUSES =
+            java.util.Set.of(STATUS_ACTIVE, STATUS_DROPPED, STATUS_COMPLETED);
 
     /** Set when status transitions to DROPPED. */
     @Column(name = "dropped_at")

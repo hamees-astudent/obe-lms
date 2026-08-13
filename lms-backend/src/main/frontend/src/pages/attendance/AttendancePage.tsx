@@ -1,10 +1,12 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { CalendarCheck, ChevronRight } from 'lucide-react';
+import { CalendarCheck, ChevronRight, ArrowRight } from 'lucide-react';
 import api from '@/lib/api';
+import QueryError from '@/components/ui/QueryError';
 import { useAuthStore } from '@/store/authStore';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import { ENROLLMENT_STATUS } from '@/types/api';
 import type {
   EnrollmentResponse,
   OfferingSummaryResponse,
@@ -72,7 +74,7 @@ function StudentLanding() {
   const enrollmentsQ = useQuery({
     queryKey: ['me', 'enrollments', 'active'],
     queryFn: () =>
-      api.get<EnrollmentResponse[]>('/me/enrollments?status=ACTIVE').then((r) => r.data),
+      api.get<EnrollmentResponse[]>(`/me/enrollments?status=${ENROLLMENT_STATUS.ACTIVE}`).then((r) => r.data),
   });
   const enrollments = enrollmentsQ.data ?? [];
 
@@ -94,6 +96,10 @@ function StudentLanding() {
       retry: false,
     })),
   });
+
+  if (enrollmentsQ.isError) {
+    return <QueryError error={enrollmentsQ.error} onRetry={() => enrollmentsQ.refetch()} />;
+  }
 
   if (enrollmentsQ.isLoading) {
     return (
@@ -171,7 +177,10 @@ function ManageCard({ card }: { card: ManageCardData }) {
       {card.semesterName && (
         <p className="mt-3 text-xs text-gray-400">{card.semesterName}</p>
       )}
-      <p className="mt-2 text-xs font-medium text-primary-600">Manage attendance →</p>
+      <p className="mt-2 flex items-center gap-1 text-xs font-medium text-primary-600">
+        Manage attendance
+        <ArrowRight size={12} />
+      </p>
     </Link>
   );
 }

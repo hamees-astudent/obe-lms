@@ -18,8 +18,19 @@ import {
   FileText,
   Upload,
   X,
+  AlertTriangle,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { toast } from '@/components/ui/Toast';
+import { toApiDateTime, toInputDateTime, formatDateTime } from '@/lib/datetime';
+import { parseApiError } from '@/lib/apiError';
+import {
+  uploadFile,
+  validateUpload,
+  formatBytes,
+  openFileByKey,
+  MAX_UPLOAD_BYTES,
+} from '@/lib/files';
 import { useAuthStore } from '@/store/authStore';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -36,26 +47,12 @@ import type {
   QuizSubmissionResponse,
   CloMappingResponse,
   SubmissionType,
-  UploadedFileResponse,
 } from '@/types/api';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function fmt(dt: string) {
-  return new Date(dt).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function toLocalDatetimeValue(iso?: string): string {
-  if (!iso) return '';
-  return iso.slice(0, 16);
-}
+const fmt = formatDateTime;
 
 function isPastDue(dueDate: string): boolean {
   return new Date(dueDate) < new Date();
@@ -105,7 +102,7 @@ function AssignmentFormModal({ pscId, editing, onClose }: AssignmentFormModalPro
           description: editing.description ?? '',
           submissionType: editing.submissionType,
           totalMarks: editing.totalMarks,
-          dueDate: toLocalDatetimeValue(editing.dueDate),
+          dueDate: toInputDateTime(editing.dueDate),
           allowLateSubmission: editing.allowLateSubmission,
           latePenaltyPercent: editing.latePenaltyPercent ?? '',
         }
@@ -120,7 +117,7 @@ function AssignmentFormModal({ pscId, editing, onClose }: AssignmentFormModalPro
     mutationFn: (data: AssignmentFormData) => {
       const body = {
         ...data,
-        dueDate: new Date(data.dueDate).toISOString(),
+        dueDate: toApiDateTime(data.dueDate),
         latePenaltyPercent: data.latePenaltyPercent === '' ? undefined : data.latePenaltyPercent,
       };
       if (editing) {
@@ -154,7 +151,7 @@ function AssignmentFormModal({ pscId, editing, onClose }: AssignmentFormModalPro
             placeholder="Optional instructions…"
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Submission Type</label>
             <select
@@ -194,8 +191,8 @@ function AssignmentFormModal({ pscId, editing, onClose }: AssignmentFormModalPro
             {...register('latePenaltyPercent')}
           />
         </div>
-        {mutation.error && (
-          <p className="text-xs text-red-600">Failed to save. Please try again.</p>
+        {mutation.error != null && (
+          <p className="text-xs text-red-600">{parseApiError(mutation.error)}</p>
         )}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -207,6 +204,50 @@ function AssignmentFormModal({ pscId, editing, onClose }: AssignmentFormModalPro
         </div>
       </form>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Submitted-file link
+// ---------------------------------------------------------------------------
+function SubmittedFileLink({
+  fileKey,
+  fileName,
+}: {
+  fileKey?: string;
+  fileName?: string;
+}) {
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (!fileName) return null;
+
+  async function open() {
+    if (!fileKey) return;
+    setError('');
+    setBusy(true);
+    try {
+      await openFileByKey(fileKey);
+    } catch (err) {
+      setError(parseApiError(err, 'Could not open the file.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <button
+        type="button"
+        onClick={open}
+        disabled={!fileKey || busy}
+        className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-800 hover:underline disabled:text-gray-400 disabled:no-underline"
+      >
+        <FileText size={13} />
+        {fileName}
+      </button>
+      {busy && <Spinner size="sm" />}
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </span>
   );
 }
 
@@ -227,33 +268,53 @@ function SubmitAssignmentModal({ assignment, onClose }: SubmitAssignmentModalPro
     size: number;
   } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const needsText = assignment.submissionType === 'TEXT' || assignment.submissionType === 'BOTH';
   const needsFile = assignment.submissionType === 'FILE' || assignment.submissionType === 'BOTH';
 
+  const isLate = isPastDue(assignment.dueDate);
+  const lateBlocked = isLate && !assignment.allowLateSubmission;
+
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadError('');
+
+    const invalid = validateUpload(file);
+    if (invalid) {
+      setUploadError(invalid);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     setUploading(true);
+    setUploadProgress(0);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await api.post<UploadedFileResponse>('/files', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const uploaded = await uploadFile(file, {
+        context: 'submissions',
+        contextId: assignment.id,
+        onProgress: setUploadProgress,
       });
       setUploadedFile({
-        key: res.data.objectKey,
-        name: res.data.originalName,
-        size: res.data.fileSize,
+        key: uploaded.objectKey,
+        name: uploaded.originalName,
+        size: uploaded.fileSize,
       });
-    } catch {
-      setUploadError('Upload failed. Please try again.');
+    } catch (err) {
+      setUploadError(parseApiError(err, 'Upload failed. Please try again.'));
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } finally {
       setUploading(false);
     }
+  }
+
+  function clearFile() {
+    setUploadedFile(null);
+    setUploadError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   const mutation = useMutation({
@@ -275,7 +336,10 @@ function SubmitAssignmentModal({ assignment, onClose }: SubmitAssignmentModalPro
   });
 
   const canSubmit =
-    (!needsText || text.trim().length > 0) && (!needsFile || !!uploadedFile);
+    !lateBlocked &&
+    !uploading &&
+    (!needsText || text.trim().length > 0) &&
+    (!needsFile || !!uploadedFile);
 
   return (
     <Modal open onClose={onClose} title={`Submit: ${assignment.title}`} maxWidth="max-w-xl">
@@ -291,7 +355,33 @@ function SubmitAssignmentModal({ assignment, onClose }: SubmitAssignmentModalPro
             <span className="font-medium">Submission type:</span>{' '}
             {SUBMISSION_TYPE_LABELS[assignment.submissionType]}
           </p>
+          <p>
+            <span className="font-medium">Max file size:</span>{' '}
+            {formatBytes(MAX_UPLOAD_BYTES)}
+          </p>
         </div>
+
+        {/* The late-submission policy belongs here, before the student
+            commits, not in a rejection after they press Submit. */}
+        {lateBlocked ? (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+            <span>
+              This assignment closed on {fmt(assignment.dueDate)} and does not accept late
+              submissions.
+            </span>
+          </div>
+        ) : isLate ? (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+            <span>
+              This submission is late.
+              {assignment.latePenaltyPercent
+                ? ` A ${assignment.latePenaltyPercent}% penalty will be applied to your marks.`
+                : ' It will be recorded as a late submission.'}
+            </span>
+          </div>
+        ) : null}
 
         {needsText && (
           <div>
@@ -321,11 +411,16 @@ function SubmitAssignmentModal({ assignment, onClose }: SubmitAssignmentModalPro
             />
             {uploadedFile ? (
               <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm">
-                <FileText size={16} className="text-green-600" />
+                <FileText size={16} className="flex-shrink-0 text-green-600" />
                 <span className="flex-1 truncate text-green-700">{uploadedFile.name}</span>
+                <span className="flex-shrink-0 text-xs text-green-600">
+                  {formatBytes(uploadedFile.size)}
+                </span>
                 <button
-                  onClick={() => setUploadedFile(null)}
-                  className="text-gray-400 hover:text-red-500"
+                  type="button"
+                  onClick={clearFile}
+                  aria-label="Remove file"
+                  className="flex-shrink-0 text-gray-400 hover:text-red-500"
                 >
                   <X size={14} />
                 </button>
@@ -334,11 +429,14 @@ function SubmitAssignmentModal({ assignment, onClose }: SubmitAssignmentModalPro
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
+                disabled={uploading || lateBlocked}
                 className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-4 text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 disabled:opacity-50"
               >
                 {uploading ? (
-                  <Spinner size="sm" />
+                  <>
+                    <Spinner size="sm" />
+                    Uploading… {uploadProgress}%
+                  </>
                 ) : (
                   <>
                     <Upload size={16} />
@@ -347,12 +445,20 @@ function SubmitAssignmentModal({ assignment, onClose }: SubmitAssignmentModalPro
                 )}
               </button>
             )}
+            {uploading && (
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className="h-full rounded-full bg-primary-500 transition-all duration-200"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            )}
             {uploadError && <p className="mt-1 text-xs text-red-600">{uploadError}</p>}
           </div>
         )}
 
-        {mutation.error && (
-          <p className="text-xs text-red-600">Submission failed. Please try again.</p>
+        {mutation.error != null && (
+          <p className="text-xs text-red-600">{parseApiError(mutation.error)}</p>
         )}
 
         <div className="flex justify-end gap-2 pt-2">
@@ -429,7 +535,8 @@ function GradeModal({ submission, totalMarks, onClose }: GradeModalProps) {
         )}
         {submission.fileName && (
           <p className="text-sm text-gray-600">
-            <span className="font-medium">File:</span> {submission.fileName}
+            <span className="font-medium">File:</span>{' '}
+            <SubmittedFileLink fileKey={submission.fileKey} fileName={submission.fileName} />
           </p>
         )}
         <Input
@@ -450,8 +557,8 @@ function GradeModal({ submission, totalMarks, onClose }: GradeModalProps) {
             placeholder="Optional feedback…"
           />
         </div>
-        {mutation.error && (
-          <p className="text-xs text-red-600">Grading failed. Please try again.</p>
+        {mutation.error != null && (
+          <p className="text-xs text-red-600">{parseApiError(mutation.error)}</p>
         )}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -513,7 +620,9 @@ function SubmissionsList({
                   </p>
                 )}
                 {s.fileName && (
-                  <p className="mt-0.5 text-xs text-gray-400">File: {s.fileName}</p>
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    <SubmittedFileLink fileKey={s.fileKey} fileName={s.fileName} />
+                  </p>
                 )}
               </div>
               <div className="flex flex-shrink-0 items-center gap-2">
@@ -581,6 +690,7 @@ function AssignmentCard({
   const deleteMutation = useMutation({
     mutationFn: () => api.delete(`/assignments/${assignment.id}`),
     onSuccess: () => {
+      toast.success('Assignment deleted.');
       queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'assignments'] });
     },
   });
@@ -631,7 +741,7 @@ function AssignmentCard({
               </Button>
               <button
                 onClick={() => onEdit(assignment)}
-                className="rounded p-1.5 text-gray-400 hover:text-gray-700"
+                className="rounded p-2 text-gray-400 hover:text-gray-700"
               >
                 <Pencil size={15} />
               </button>
@@ -639,7 +749,7 @@ function AssignmentCard({
                 onClick={() => {
                   if (confirm('Delete this assignment?')) deleteMutation.mutate();
                 }}
-                className="rounded p-1.5 text-gray-400 hover:text-red-500"
+                className="rounded p-2 text-gray-400 hover:text-red-500"
               >
                 <Trash2 size={15} />
               </button>
@@ -914,8 +1024,8 @@ function QuizFormModal({ pscId, editing, onClose }: QuizFormModalProps) {
           title: editing.title,
           description: editing.description ?? '',
           durationMinutes: editing.durationMinutes ?? '',
-          availableFrom: toLocalDatetimeValue(editing.availableFrom),
-          availableUntil: toLocalDatetimeValue(editing.availableUntil),
+          availableFrom: toInputDateTime(editing.availableFrom),
+          availableUntil: toInputDateTime(editing.availableUntil),
           shuffleQuestions: editing.shuffleQuestions,
           shuffleOptions: editing.shuffleOptions,
         }
@@ -927,12 +1037,8 @@ function QuizFormModal({ pscId, editing, onClose }: QuizFormModalProps) {
       const body = {
         ...data,
         durationMinutes: data.durationMinutes === '' ? undefined : data.durationMinutes,
-        availableFrom: data.availableFrom
-          ? new Date(data.availableFrom).toISOString()
-          : undefined,
-        availableUntil: data.availableUntil
-          ? new Date(data.availableUntil).toISOString()
-          : undefined,
+        availableFrom: toApiDateTime(data.availableFrom),
+        availableUntil: toApiDateTime(data.availableUntil),
       };
       if (editing) {
         return api.put<QuizResponse>(`/quizzes/${editing.id}`, body).then((r) => r.data);
@@ -972,7 +1078,7 @@ function QuizFormModal({ pscId, editing, onClose }: QuizFormModalProps) {
           error={errors.durationMinutes?.message}
           {...register('durationMinutes')}
         />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
             label="Available From"
             type="datetime-local"
@@ -994,7 +1100,9 @@ function QuizFormModal({ pscId, editing, onClose }: QuizFormModalProps) {
             Shuffle options
           </label>
         </div>
-        {mutation.error && <p className="text-xs text-red-600">Failed to save.</p>}
+        {mutation.error != null && (
+          <p className="text-xs text-red-600">{parseApiError(mutation.error)}</p>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
@@ -1189,7 +1297,7 @@ function QuestionFormModal({ quizId, editing, nextOrderIndex, onClose }: Questio
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
             label="Marks"
             type="number"
@@ -1216,7 +1324,9 @@ function QuestionFormModal({ quizId, editing, nextOrderIndex, onClose }: Questio
           />
         </div>
 
-        {mutation.error && <p className="text-xs text-red-600">Failed to save question.</p>}
+        {mutation.error != null && (
+          <p className="text-xs text-red-600">{parseApiError(mutation.error)}</p>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
@@ -1298,7 +1408,7 @@ function QuestionsPanel({ quiz }: { quiz: QuizResponse }) {
               <div className="ml-2 flex flex-shrink-0 items-center gap-1">
                 <button
                   onClick={() => setEditingQuestion(q)}
-                  className="rounded p-1 text-gray-400 hover:text-gray-700"
+                  className="rounded p-2 text-gray-400 hover:text-gray-700"
                 >
                   <Pencil size={13} />
                 </button>
@@ -1306,7 +1416,7 @@ function QuestionsPanel({ quiz }: { quiz: QuizResponse }) {
                   onClick={() => {
                     if (confirm('Delete this question?')) deleteMutation.mutate(q.id);
                   }}
-                  className="rounded p-1 text-gray-400 hover:text-red-500"
+                  className="rounded p-2 text-gray-400 hover:text-red-500"
                 >
                   <Trash2 size={13} />
                 </button>
@@ -1356,35 +1466,58 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
   });
   const questions = (questionsQ.data ?? []).slice().sort((a, b) => a.orderIndex - b.orderIndex);
 
-  // Timer countdown
-  useEffect(() => {
-    if (timeLeft === null) return;
-    if (timeLeft <= 0) {
-      submitMutation.mutate();
-      return;
-    }
-    const id = setInterval(() => setTimeLeft((t) => (t !== null ? t - 1 : null)), 1000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft]);
-
   const saveMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (payload: Record<string, string[]>) =>
       api
-        .put<QuizSubmissionResponse>(`/quiz-submissions/${submission.id}/answers`, { answers })
+        .put<QuizSubmissionResponse>(`/quiz-submissions/${submission.id}/answers`, {
+          answers: payload,
+        })
         .then((r) => r.data),
   });
 
   const submitMutation = useMutation({
-    mutationFn: () =>
-      api
-        .post<QuizSubmissionResponse>(`/quiz-submissions/${submission.id}/submit`)
-        .then((r) => r.data),
+    // The answers live in component state, so they must reach the server
+    // *before* the submit call grades the attempt — submitting on its own
+    // grades whatever was last persisted, which for most students is nothing.
+    mutationFn: async (payload: Record<string, string[]>) => {
+      await saveMutation.mutateAsync(payload);
+      const res = await api.post<QuizSubmissionResponse>(
+        `/quiz-submissions/${submission.id}/submit`,
+      );
+      return res.data;
+    },
     onSuccess: (data) => {
       queryClient.setQueryData(['me', 'quizzes', quiz.id, 'submission'], data);
+      queryClient.invalidateQueries({ queryKey: ['quizzes', quiz.id, 'submissions'] });
       onClose();
     },
   });
+
+  // Latest answers, readable from the timer without re-arming it every tick.
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
+  const autoSubmittedRef = useRef(false);
+
+  // Timer countdown — one interval for the lifetime of the attempt.
+  useEffect(() => {
+    if (!quiz.durationMinutes) return;
+    const deadline =
+      new Date(submission.startedAt).getTime() + quiz.durationMinutes * 60_000;
+
+    const tick = () => {
+      const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+      setTimeLeft(remaining);
+      if (remaining === 0 && !autoSubmittedRef.current) {
+        autoSubmittedRef.current = true;
+        submitMutation.mutate(answersRef.current);
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quiz.durationMinutes, submission.startedAt]);
 
   function toggleAnswer(questionId: UUID, optId: string, type: 'MCQ' | 'MSQ') {
     setAnswers((prev) => {
@@ -1482,20 +1615,25 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => saveMutation.mutate()}
           loading={saveMutation.isPending}
+          onClick={() => saveMutation.mutate(answers)}
         >
           Save Progress
         </Button>
         <div className="flex gap-2">
           <Button
             variant="secondary"
-            onClick={() => {
-              saveMutation.mutate();
-              onClose();
+            loading={saveMutation.isPending}
+            onClick={async () => {
+              // Persist before leaving, or the attempt reopens empty.
+              try {
+                await saveMutation.mutateAsync(answers);
+              } finally {
+                onClose();
+              }
             }}
           >
-            Save & Exit
+            Save &amp; Exit
           </Button>
           <Button
             variant="primary"
@@ -1505,7 +1643,7 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
                   `Submit quiz? You've answered ${answered}/${questions.length} questions.`,
                 )
               ) {
-                submitMutation.mutate();
+                submitMutation.mutate(answers);
               }
             }}
             loading={submitMutation.isPending}
@@ -1514,6 +1652,11 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
           </Button>
         </div>
       </div>
+      {submitMutation.error != null && (
+        <p className="mt-2 text-right text-xs text-red-600">
+          {parseApiError(submitMutation.error)}
+        </p>
+      )}
     </Modal>
   );
 }
@@ -1558,6 +1701,7 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
   const deleteMutation = useMutation({
     mutationFn: () => api.delete(`/quizzes/${quiz.id}`),
     onSuccess: () => {
+      toast.success('Quiz deleted.');
       queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'quizzes'] });
     },
   });
@@ -1579,6 +1723,10 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
   const mySubmission = mySubmissionQ.data;
   const isSubmitted = !!mySubmission?.submittedAt;
   const inProgress = mySubmission && !isSubmitted;
+
+  // Every question carries at least 0.01 marks, so a zero total means the quiz
+  // has no questions yet. The server refuses to start one either.
+  const hasQuestions = quiz.totalMarks > 0;
 
   return (
     <div
@@ -1636,7 +1784,7 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
               </Button>
               <button
                 onClick={() => onEdit(quiz)}
-                className="rounded p-1.5 text-gray-400 hover:text-gray-700"
+                className="rounded p-2 text-gray-400 hover:text-gray-700"
               >
                 <Pencil size={15} />
               </button>
@@ -1644,7 +1792,7 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
                 onClick={() => {
                   if (confirm('Delete this quiz?')) deleteMutation.mutate();
                 }}
-                className="rounded p-1.5 text-gray-400 hover:text-red-500"
+                className="rounded p-2 text-gray-400 hover:text-red-500"
               >
                 <Trash2 size={15} />
               </button>
@@ -1667,6 +1815,8 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
                 <Button size="sm" onClick={() => setShowPlayer(true)}>
                   Continue
                 </Button>
+              ) : !hasQuestions ? (
+                <Badge variant="default">No questions yet</Badge>
               ) : isWithinWindow ? (
                 <Button
                   size="sm"
@@ -1682,6 +1832,17 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
           )}
         </div>
       </div>
+
+      {startMutation.error != null && (
+        <p className="mt-2 text-sm text-red-600">{parseApiError(startMutation.error)}</p>
+      )}
+
+      {isTeacher && !hasQuestions && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-700">
+          <AlertTriangle size={13} />
+          This quiz has no questions — students cannot start it yet.
+        </p>
+      )}
 
       {/* Questions panel (teacher) */}
       {isTeacher && showQuestions && <QuestionsPanel quiz={quiz} />}

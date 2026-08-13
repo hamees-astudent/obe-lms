@@ -1,12 +1,13 @@
 package com.lms.modules.courses.dto;
 
+import com.lms.shared.InstitutionalCodes;
 import jakarta.validation.constraints.*;
 
 public record CreateCourseRequest(
 
         @NotBlank
         @Size(max = 20)
-        @Pattern(regexp = "[A-Z0-9_]+", message = "Code must be uppercase letters, digits or underscores")
+        @Pattern(regexp = InstitutionalCodes.CODE_PATTERN, message = InstitutionalCodes.CODE_MESSAGE)
         String code,
 
         @NotBlank @Size(max = 255)

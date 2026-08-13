@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,7 +31,7 @@ public class AttendanceController {
     public SessionResponse createSession(
             @Valid @RequestBody CreateSessionRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return attendanceService.createSession(principal.getId(), req);
+        return attendanceService.createSession(principal.getId(), isAdmin(principal), req);
     }
 
     @PostMapping("/api/sessions/{sessionId}/close")
@@ -38,7 +39,7 @@ public class AttendanceController {
     public SessionResponse closeSession(
             @PathVariable UUID sessionId,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return attendanceService.closeSession(sessionId, principal.getId());
+        return attendanceService.closeSession(sessionId, principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/offerings/{pscId}/sessions")
@@ -66,7 +67,8 @@ public class AttendanceController {
             @PathVariable UUID studentId,
             @Valid @RequestBody MarkAttendanceRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return attendanceService.markRecord(sessionId, studentId, req, principal.getId());
+        return attendanceService.markRecord(sessionId, studentId, req,
+                principal.getId(), isAdmin(principal));
     }
 
     @PostMapping("/api/sessions/{sessionId}/records/bulk")
@@ -75,7 +77,7 @@ public class AttendanceController {
             @PathVariable UUID sessionId,
             @Valid @RequestBody BulkMarkRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return attendanceService.bulkMark(sessionId, req, principal.getId());
+        return attendanceService.bulkMark(sessionId, req, principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/sessions/{sessionId}/records")
@@ -100,6 +102,12 @@ public class AttendanceController {
             @PathVariable UUID pscId,
             @PathVariable UUID studentId) {
         return attendanceService.getAttendanceSummary(pscId, studentId);
+    }
+
+    private static boolean isAdmin(UserPrincipal principal) {
+        return principal.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch("ROLE_ADMIN"::equals);
     }
 
     @GetMapping("/api/me/attendance/{pscId}")

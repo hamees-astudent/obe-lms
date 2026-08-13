@@ -8,6 +8,8 @@ public record EnrollmentResponse(
         UUID pscId,
         UUID studentId,
         String studentName,
+        /** Institutional roll number; null on endpoints that do not resolve it. */
+        String studentNumber,
         String courseRole,
         String status,
         LocalDateTime enrolledAt,

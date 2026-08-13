@@ -2,9 +2,11 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { BookOpen, ChevronRight } from 'lucide-react';
 import api from '@/lib/api';
+import QueryError from '@/components/ui/QueryError';
 import { useAuthStore } from '@/store/authStore';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import { ENROLLMENT_STATUS } from '@/types/api';
 import type {
   EnrollmentResponse,
   OfferingSummaryResponse,
@@ -106,7 +108,7 @@ function StudentCourses() {
     queryKey: ['me', 'enrollments', 'active'],
     queryFn: () =>
       api
-        .get<EnrollmentResponse[]>('/me/enrollments?status=ACTIVE')
+        .get<EnrollmentResponse[]>(`/me/enrollments?status=${ENROLLMENT_STATUS.ACTIVE}`)
         .then((r) => r.data),
   });
   const enrollments = enrollmentsQ.data ?? [];
@@ -124,6 +126,10 @@ function StudentCourses() {
 
   const loading =
     enrollmentsQ.isLoading || offeringQueries.some((q) => q.isLoading);
+
+  if (enrollmentsQ.isError) {
+    return <QueryError error={enrollmentsQ.error} onRetry={() => enrollmentsQ.refetch()} />;
+  }
 
   const cards: CourseCardData[] = offeringQueries
     .map((q) => q.data)

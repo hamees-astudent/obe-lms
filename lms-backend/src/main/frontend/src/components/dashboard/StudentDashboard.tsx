@@ -13,6 +13,7 @@ import { useAuthStore } from '@/store/authStore';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import { ENROLLMENT_STATUS } from '@/types/api';
 import type {
   EnrollmentResponse,
   OfferingSummaryResponse,
@@ -49,7 +50,7 @@ export default function StudentDashboard() {
     queryKey: ['me', 'enrollments', 'active'],
     queryFn: () =>
       api
-        .get<EnrollmentResponse[]>('/me/enrollments?status=ACTIVE')
+        .get<EnrollmentResponse[]>(`/me/enrollments?status=${ENROLLMENT_STATUS.ACTIVE}`)
         .then((r) => r.data),
   });
   const enrollments: EnrollmentResponse[] = enrollmentsQ.data ?? [];

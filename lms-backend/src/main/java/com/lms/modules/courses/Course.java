@@ -39,6 +39,10 @@ public class Course extends BaseEntity {
     @Column(nullable = false, length = 20)
     private String status = "ACTIVE";
 
+    /** The only values {@link #status} may hold. */
+    public static final java.util.Set<String> STATUSES =
+            java.util.Set.of("ACTIVE", "INACTIVE");
+
     @LastModifiedDate
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;

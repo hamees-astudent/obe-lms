@@ -57,14 +57,17 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
             @Param("studentId") UUID studentId);
 
     /**
-     * Fetches (studentId, studentName) pairs for every enrollment in a course offering.
+     * Fetches the identity fields for every enrollment in a course offering.
      * Used to populate {@link com.lms.modules.enrollment.dto.EnrollmentResponse#studentName}
      * without requiring cross-module repository injection.
      */
     @Query(value = """
-            SELECT e.student_id::text AS studentId, u.name AS studentName
+            SELECT e.student_id::text AS studentId,
+                   u.name               AS studentName,
+                   sp.student_number    AS studentNumber
             FROM enrollments e
-            JOIN users u ON u.id = e.student_id
+            JOIN users u             ON u.id = e.student_id
+            LEFT JOIN student_profiles sp ON sp.user_id = e.student_id
             WHERE e.psc_id = :pscId
             """, nativeQuery = true)
     List<StudentNameView> findStudentNamesByPscId(@Param("pscId") UUID pscId);

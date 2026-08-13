@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus, Edit2, ShieldCheck, UserX, UserCheck, Search } from 'lucide-react';
 import api from '@/lib/api';
+import { parseApiError } from '@/lib/apiError';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import CopyableId from '@/components/ui/CopyableId';
 import type {
   UserSummaryResponse,
   Page,
@@ -70,27 +72,34 @@ export default function UsersPage() {
   const [changingRole, setChangingRole] = useState<UserSummaryResponse | null>(null);
   const [newRole, setNewRole] = useState<Role>('STUDENT');
 
+  // Debounced so typing does not fire a request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
   // ── query ─────────────────────────────────────────────────────────────────
-  const { data, isLoading } = useQuery<Page<UserSummaryResponse>>({
-    queryKey: ['admin-users', page, roleFilter, statusFilter],
+  // Searching server-side rather than filtering the loaded page: a client-side
+  // filter only ever sees the current 20 rows, so a user on page 3 is
+  // unfindable — and it cannot match roll numbers at all.
+  const { data, isLoading, isError, error } = useQuery<Page<UserSummaryResponse>>({
+    queryKey: ['admin-users', page, roleFilter, statusFilter, debouncedSearch],
     queryFn: () =>
       api
         .get('/admin/users', {
-          params: { page, size: PAGE_SIZE, ...(roleFilter && { role: roleFilter }), ...(statusFilter && { status: statusFilter }) },
+          params: {
+            page,
+            size: PAGE_SIZE,
+            ...(roleFilter && { role: roleFilter }),
+            ...(statusFilter && { status: statusFilter }),
+            ...(debouncedSearch && { q: debouncedSearch }),
+          },
         })
         .then((r) => r.data),
   });
 
-  const users = data?.content ?? [];
-
-  // client-side name search (backend has no search param)
-  const visible = search
-    ? users.filter(
-        (u) =>
-          u.name.toLowerCase().includes(search.toLowerCase()) ||
-          u.email.toLowerCase().includes(search.toLowerCase()),
-      )
-    : users;
+  const visible = data?.content ?? [];
 
   // ── mutations ─────────────────────────────────────────────────────────────
   const invalidate = () => qc.invalidateQueries({ queryKey: ['admin-users'] });
@@ -156,7 +165,7 @@ export default function UsersPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or email…"
+            placeholder="Search by name, email or roll number…"
             className="pl-8 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 w-64"
           />
         </div>
@@ -196,13 +205,32 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {visible.length === 0 ? (
+              {isError ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-gray-400">No users found.</td>
+                  <td colSpan={6} className="py-10 text-center text-red-600">
+                    {parseApiError(error)}
+                  </td>
+                </tr>
+              ) : visible.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-gray-400">
+                    {debouncedSearch ? `No users match "${debouncedSearch}".` : 'No users found.'}
+                  </td>
                 </tr>
               ) : visible.map((u) => (
                 <tr key={u.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-900">{u.name}</td>
+                  <td className="px-4 py-3">
+                    <span className="font-medium text-gray-900">{u.name}</span>
+                    {/* Both identifiers a student is looked up by. The UUID is
+                        stored but was never shown anywhere, which left the
+                        transcript search with nothing to paste. */}
+                    <span className="mt-0.5 flex items-center gap-2 text-xs">
+                      {u.studentNumber && (
+                        <span className="font-mono text-gray-500">{u.studentNumber}</span>
+                      )}
+                      <CopyableId id={u.id} />
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-gray-600">{u.email}</td>
                   <td className="px-4 py-3">{roleBadge(u.role)}</td>
                   <td className="px-4 py-3">{statusBadge(u.status)}</td>
@@ -212,21 +240,21 @@ export default function UsersPage() {
                       <button
                         title="Edit name"
                         onClick={() => openEdit(u)}
-                        className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
+                        className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         title="Change role"
                         onClick={() => openChangeRole(u)}
-                        className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition"
+                        className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition"
                       >
                         <ShieldCheck size={15} />
                       </button>
                       <button
                         title={u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
                         onClick={() => toggleStatusMut.mutate(u)}
-                        className={`rounded p-1 transition hover:bg-gray-100 ${
+                        className={`rounded p-2 transition hover:bg-gray-100 ${
                           u.status === 'ACTIVE' ? 'text-red-400 hover:text-red-600' : 'text-green-400 hover:text-green-600'
                         }`}
                       >
