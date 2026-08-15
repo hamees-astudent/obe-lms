@@ -6,7 +6,7 @@ import com.lms.shared.CacheNames;
 import com.lms.shared.events.AttendanceAlertEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.CacheManager;
+import com.lms.infrastructure.cache.CacheEvictor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,7 +28,7 @@ public class AttendanceService {
     private final AttendanceRecordRepository  recordRepository;
     private final KafkaEventPublisher         kafkaEventPublisher;
     private final AttendanceProperties        properties;
-    private final CacheManager                cacheManager;
+    private final CacheEvictor                cacheEvictor;
 
     // ── Sessions ──────────────────────────────────────────────────────────────
 
@@ -176,17 +176,13 @@ public class AttendanceService {
     /**
      * Drops the cached summary for one student in one offering.
      *
-     * <p>Done through the {@link CacheManager} rather than {@code @CacheEvict}
-     * on purpose: the marking methods call this from inside the same bean, and a
-     * self-invocation never passes through the caching proxy — the annotation
-     * would be silently inert and every student would keep reading the summary
-     * that was cached before their attendance was ever marked.
+     * <p>Explicit rather than {@code @CacheEvict}: the marking methods call this
+     * from inside the same bean, and a self-invocation never passes through the
+     * caching proxy — the annotation would be silently inert and every student
+     * would keep reading the summary cached before their attendance was marked.
      */
     private void evictSummary(UUID pscId, UUID studentId) {
-        var cache = cacheManager.getCache(CacheNames.ATTENDANCE_SUMMARY);
-        if (cache != null) {
-            cache.evict(pscId + ":" + studentId);
-        }
+        cacheEvictor.evict(CacheNames.ATTENDANCE_SUMMARY, pscId + ":" + studentId);
     }
 
     /** Recomputes the summary and publishes an alert if below threshold. */

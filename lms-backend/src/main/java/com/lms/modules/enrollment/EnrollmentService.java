@@ -6,7 +6,7 @@ import com.lms.shared.CacheNames;
 import com.lms.shared.events.EnrollmentEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.CacheManager;
+import com.lms.infrastructure.cache.CacheEvictor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
@@ -28,7 +28,7 @@ public class EnrollmentService {
 
     private final EnrollmentRepository   enrollmentRepository;
     private final KafkaEventPublisher    kafkaEventPublisher;
-    private final CacheManager           cacheManager;
+    private final CacheEvictor           cacheEvictor;
 
     // ── Enroll ────────────────────────────────────────────────────────────────
 
@@ -167,16 +167,13 @@ public class EnrollmentService {
     /**
      * Drops the student's cached enrollment list.
      *
-     * <p>Goes through the {@link CacheManager} rather than {@code @CacheEvict}:
-     * this is called from {@code enroll}/{@code drop} on the same bean, and a
-     * self-invocation bypasses the caching proxy — leaving a dropped course
-     * visible in "my courses" until the entry expires on its own.
+     * <p>Explicit rather than {@code @CacheEvict}: this is called from
+     * {@code drop} on the same bean, and a self-invocation bypasses the caching
+     * proxy — leaving a dropped course visible in "my courses" until the entry
+     * expires on its own.
      */
     public void evictStudentCache(UUID studentId) {
-        var cache = cacheManager.getCache(CacheNames.ENROLLMENT);
-        if (cache != null) {
-            cache.evict(studentId);
-        }
+        cacheEvictor.evict(CacheNames.ENROLLMENT, studentId);
     }
 
     private void publishEvent(Enrollment enrollment, EnrollmentEvent.Action action) {

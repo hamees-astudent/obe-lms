@@ -15,8 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
+import com.lms.infrastructure.cache.CacheEvictor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -45,8 +44,7 @@ class AttendanceServiceTest {
     @Mock  private AttendanceSessionRepository sessionRepository;
     @Mock  private AttendanceRecordRepository  recordRepository;
     @Mock  private KafkaEventPublisher         kafkaEventPublisher;
-    @Mock  private CacheManager                cacheManager;
-    @Mock  private Cache                       summaryCache;
+    @Mock  private CacheEvictor               cacheEvictor;
 
     private final AttendanceProperties properties = new AttendanceProperties();
 
@@ -60,9 +58,8 @@ class AttendanceServiceTest {
     @BeforeEach
     void setUp() {
         service = new AttendanceService(sessionRepository, recordRepository,
-                kafkaEventPublisher, properties, cacheManager);
+                kafkaEventPublisher, properties, cacheEvictor);
 
-        when(cacheManager.getCache(CacheNames.ATTENDANCE_SUMMARY)).thenReturn(summaryCache);
         when(sessionRepository.isStaffOfOffering(any(), any())).thenReturn(true);
         when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(openSession()));
         when(recordRepository.findBySessionIdAndStudentId(any(), any())).thenReturn(Optional.empty());
@@ -78,7 +75,7 @@ class AttendanceServiceTest {
         service.markRecord(sessionId, studentId,
                 new MarkAttendanceRequest("PRESENT", null), teacherId, false);
 
-        verify(summaryCache).evict(pscId + ":" + studentId);
+        verify(cacheEvictor).evict(CacheNames.ATTENDANCE_SUMMARY, pscId + ":" + studentId);
     }
 
     @Test
@@ -91,8 +88,8 @@ class AttendanceServiceTest {
                         new BulkMarkEntry(otherStudent, "ABSENT", null))),
                 teacherId, false);
 
-        verify(summaryCache).evict(pscId + ":" + studentId);
-        verify(summaryCache).evict(pscId + ":" + otherStudent);
+        verify(cacheEvictor).evict(CacheNames.ATTENDANCE_SUMMARY, pscId + ":" + studentId);
+        verify(cacheEvictor).evict(CacheNames.ATTENDANCE_SUMMARY, pscId + ":" + otherStudent);
     }
 
     // ── Summary arithmetic ───────────────────────────────────────────────────

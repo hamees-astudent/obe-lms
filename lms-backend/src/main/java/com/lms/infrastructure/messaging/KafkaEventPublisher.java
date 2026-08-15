@@ -77,11 +77,24 @@ public class KafkaEventPublisher {
 
     // ── Internal ──────────────────────────────────────────────────────────────
 
+    /**
+     * Publishes best-effort.
+     *
+     * <p>These events are notifications about work that has already been
+     * committed — an unreachable broker must not turn a teacher's saved
+     * attendance mark into a 500. A failure is logged loudly and the caller
+     * continues; the write stands either way.
+     */
     private void send(String topic, Object payload, Object eventId) {
         log.debug("Publishing event to topic '{}': eventId={}", topic, eventId);
-        boolean accepted = streamBridge.send(topic, payload);
-        if (!accepted) {
-            log.error("StreamBridge rejected event to topic '{}': eventId={}", topic, eventId);
+        try {
+            boolean accepted = streamBridge.send(topic, payload);
+            if (!accepted) {
+                log.error("StreamBridge rejected event to topic '{}': eventId={}", topic, eventId);
+            }
+        } catch (RuntimeException ex) {
+            log.error("Failed to publish event to topic '{}' (eventId={}): {}",
+                    topic, eventId, ex.getMessage());
         }
     }
 }
