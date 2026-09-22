@@ -12,6 +12,7 @@ interface ModalProps {
 
 export default function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg' }: ModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const backdropPressRef = useRef(false);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -23,19 +24,18 @@ export default function Modal({ open, onClose, title, children, maxWidth = 'max-
     }
   }, [open]);
 
-  // Close on backdrop click (click outside the dialog panel)
+  // Close on backdrop click. The backdrop is the dialog's ::backdrop pseudo-element,
+  // so only a press that both starts and ends on the <dialog> itself counts — never one
+  // on its children. Coordinates are unreliable here: native <select> popups can paint
+  // outside the panel and report click points beyond (or at 0,0 of) the dialog's box.
+  function handleMouseDown(e: React.MouseEvent<HTMLDialogElement>) {
+    backdropPressRef.current = e.target === dialogRef.current;
+  }
+
   function handleClick(e: React.MouseEvent<HTMLDialogElement>) {
-    const rect = dialogRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const { clientX, clientY } = e;
-    if (
-      clientX < rect.left ||
-      clientX > rect.right ||
-      clientY < rect.top ||
-      clientY > rect.bottom
-    ) {
-      onClose();
-    }
+    const startedOnBackdrop = backdropPressRef.current;
+    backdropPressRef.current = false;
+    if (startedOnBackdrop && e.target === dialogRef.current) onClose();
   }
 
   if (!open) return null;
@@ -43,6 +43,7 @@ export default function Modal({ open, onClose, title, children, maxWidth = 'max-
   return (
     <dialog
       ref={dialogRef}
+      onMouseDown={handleMouseDown}
       onClick={handleClick}
       onClose={onClose}
       className={[

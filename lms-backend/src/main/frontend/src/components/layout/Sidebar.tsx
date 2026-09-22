@@ -11,6 +11,7 @@ import {
   BarChart2,
   Library,
   type LucideIcon,
+  ScanLine,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import type { Role } from '@/types/api';
@@ -43,6 +44,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/courses', label: 'Courses', icon: BookOpen },
       { to: '/attendance', label: 'Attendance', icon: ClipboardCheck },
       { to: '/assessment', label: 'Assessment', icon: FileText },
+      { to: '/exams', label: 'Exams', icon: ScanLine },
       { to: '/transcripts', label: 'Transcripts', icon: GraduationCap },
       { to: '/notifications', label: 'Notifications', icon: Bell },
     ],

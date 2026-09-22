@@ -24,6 +24,7 @@
         <spring-cloud.version>2023.0.2</spring-cloud.version>
         <jjwt.version>0.12.5</jjwt.version>
         <aws-sdk.version>2.25.70</aws-sdk.version>
+        <anthropic-sdk.version>2.34.0</anthropic-sdk.version>
         <node.version>v20.14.0</node.version>
         <npm.version>10.7.0</npm.version>
         <frontend-maven-plugin.version>1.15.0</frontend-maven-plugin.version>
@@ -180,6 +181,16 @@
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- ── Claude API (exam marks-sheet extraction) ──────── -->
+        <!-- Reads the handwritten marks table off a photographed exam copy.
+             Optional at runtime: with no API key configured the extractor bean
+             is not created and the exams module falls back to manual entry. -->
+        <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java</artifactId>
+            <version>${anthropic-sdk.version}</version>
+        </dependency>
+
         <!-- ── PDF Generation (OpenPDF — LGPL fork of iText 5) ─── -->
         <dependency>
             <groupId>com.github.librepdf</groupId>

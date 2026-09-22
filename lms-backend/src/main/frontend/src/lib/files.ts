@@ -92,6 +92,22 @@ export async function openFileByKey(objectKey: string): Promise<void> {
   await openFile(file.id);
 }
 
+/**
+ * Resolves an object key to a temporary URL the browser can render inline.
+ *
+ * `openFileByKey` sends the user to a new tab, which is wrong when the file has
+ * to be looked at *beside* something else — a scanned exam page next to the
+ * marks read off it, say. The URL is pre-signed and short-lived, so it works in
+ * a plain `<img src>` without the Authorization header the API otherwise needs.
+ */
+export async function presignedUrlByKey(objectKey: string): Promise<string> {
+  const { data: file } = await api.get<UploadedFileResponse>('/files/by-key', {
+    params: { key: objectKey },
+  });
+  const { data } = await api.get<PresignedUrlResponse>(`/files/${file.id}/url`);
+  return data.url;
+}
+
 /** Downloads a stored file under a chosen filename. */
 export async function downloadFile(fileId: UUID, filename?: string): Promise<void> {
   const res = await api.get<Blob>(`/files/${fileId}/download`, { responseType: 'blob' });

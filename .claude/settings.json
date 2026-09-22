@@ -30,7 +30,22 @@
       "Bash(timeout 600 mvn test)",
       "Bash(grep -rn \"^\\\\s*test\\(.*{ *[a-z]*, *teacherToken\\\\|{ teacherToken\" tests/)",
       "Bash(grep -rn \"Bearer \\\\${teacherToken}\\\\|, teacherToken\\)\" tests/)",
-      "Bash(timeout 500 mvn test -Dtest='GlobalExceptionHandlerTest' -DfailIfNoTests=false)"
+      "Bash(timeout 500 mvn test -Dtest='GlobalExceptionHandlerTest' -DfailIfNoTests=false)",
+      "Bash(time timeout 900 mvn -o clean package -DskipTests)",
+      "Bash(time timeout 900 mvn clean package -DskipTests)",
+      "Bash(unzip -l target/lms-backend-0.0.1-SNAPSHOT.jar)",
+      "Bash(timeout 900 mvn package -Dskip.frontend=true -Dtest='!LmsApplicationModulesTest' -DfailIfNoTests=false)",
+      "Bash(netstat -ltnp)",
+      "Bash(echo \"--- exit:$? ---\")",
+      "Bash(PGPASSWORD=lms_password psql -h localhost -U lms_user -d lms_db -tAc ' *)",
+      "Bash(PGPASSWORD=lms_password psql -h localhost -U lms_user -d lms_db -tAc \"SELECT id, psc_id, closed_at IS NULL AS is_open FROM attendance_sessions WHERE id='a8de6b0c-e763-48db-9a0d-0153db1d212d';\")",
+      "Bash(timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/6379')",
+      "Bash(PGPASSWORD=lms_password psql -h localhost -U lms_user -d lms_db -tAc \"SELECT count\\(*\\) FROM attendance_sessions;\")",
+      "Bash(PGPASSWORD=lms_password psql -h localhost -U lms_user -d lms_db -tAc \"SELECT datname FROM pg_database WHERE datistemplate=false;\")",
+      "Bash(timeout 600 mvn test -Dskip.frontend=true -Dtest='!LmsApplicationModulesTest' -DfailIfNoTests=false)",
+      "Bash(timeout 900 mvn clean package -DskipTests)",
+      "Bash(timeout 600 npm run verify)",
+      "Bash(git check-ignore *)"
     ]
   }
 }

@@ -683,6 +683,183 @@ export interface UpdateMaterialBody {
 }
 
 // ---------------------------------------------------------------------------
+// Exams
+// ---------------------------------------------------------------------------
+export type ExamType = 'MIDTERM' | 'FINAL' | 'SESSIONAL' | 'MAKEUP';
+export type ExamStatus = 'DRAFT' | 'OPEN' | 'LOCKED';
+export type ExamScanStatus =
+  | 'PENDING'
+  | 'EXTRACTED'
+  | 'CONFIRMED'
+  | 'FAILED'
+  | 'DISCARDED';
+export type ExamResultSource = 'SCAN' | 'MANUAL';
+
+export interface ExamCloMappingResponse {
+  cloId: UUID;
+  cloCode?: string;
+  cloTitle?: string;
+  weight?: number;
+}
+
+export interface ExamQuestionResponse {
+  id: UUID;
+  questionNo: string;
+  maxMarks: number;
+  orderIndex: number;
+  cloMappings: ExamCloMappingResponse[];
+}
+
+export interface ExamResponse {
+  id: UUID;
+  pscId: UUID;
+  courseCode?: string;
+  courseName?: string;
+  createdBy: UUID;
+  title: string;
+  examType: ExamType;
+  examDate: string;
+  totalMarks: number;
+  status: ExamStatus;
+  questions: ExamQuestionResponse[];
+  /** Sum of the question maxima — compare against totalMarks. */
+  questionMarksTotal: number;
+  resultsRecorded: number;
+  rosterSize: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/**
+ * A scanned copy awaiting review.
+ *
+ * Nothing here is recorded yet: `proposedMarks` is what the reader saw, and it
+ * becomes a result only when the teacher confirms it.
+ */
+export interface ScanReviewResponse {
+  id: UUID;
+  examId?: UUID;
+  examTitle?: string;
+  status: ExamScanStatus;
+  imageKey: string;
+
+  readRollNumber?: string;
+  readStudentName?: string;
+  readCourseCode?: string;
+  readExamDate?: string;
+  readWrittenTotal?: number;
+  confidence?: 'HIGH' | 'MEDIUM' | 'LOW';
+  extractorNotes: string[];
+
+  matchedStudentId?: UUID;
+  matchedStudentName?: string;
+  matchedStudentNumber?: string;
+
+  proposedMarks: ProposedMark[];
+  proposedTotal: number;
+
+  warnings: string[];
+  errorMessage?: string;
+  createdAt: string;
+}
+
+export interface ProposedMark {
+  questionId: UUID;
+  questionNo: string;
+  maxMarks: number;
+  /** Null when the reader could not read the cell — not a zero. */
+  marksObtained: number | null;
+  unread: boolean;
+}
+
+export interface ScanSummaryResponse {
+  id: UUID;
+  examId?: UUID;
+  status: ExamScanStatus;
+  imageKey: string;
+  readRollNumber?: string;
+  readStudentName?: string;
+  matchedStudentId?: UUID;
+  matchedStudentName?: string;
+  warningCount: number;
+  errorMessage?: string;
+  createdAt: string;
+  confirmedAt?: string;
+}
+
+export interface ExamQuestionMarkResponse {
+  questionId: UUID;
+  questionNo?: string;
+  maxMarks?: number;
+  marksObtained: number | null;
+}
+
+export interface ExamResultResponse {
+  id: UUID;
+  examId: UUID;
+  studentId: UUID;
+  studentName?: string;
+  studentNumber?: string;
+  totalObtained: number;
+  totalMarks: number;
+  percentage?: number;
+  source: ExamResultSource;
+  scanId?: UUID;
+  recordedBy: UUID;
+  recordedAt: string;
+  remarks?: string;
+  marks: ExamQuestionMarkResponse[];
+}
+
+export interface ExamRosterEntryResponse {
+  studentId: UUID;
+  name: string;
+  studentNumber?: string;
+  hasResult: boolean;
+}
+
+/** One question's mark, as sent back on confirm or manual entry. */
+export interface QuestionMarkEntryBody {
+  questionId: UUID;
+  /** Null records the question as not attempted. */
+  marksObtained: number | null;
+}
+
+export interface ExamQuestionBody {
+  questionNo: string;
+  maxMarks: number;
+  cloMappings: { cloId: UUID; weight?: number }[];
+}
+
+export interface CreateExamBody {
+  title: string;
+  examType: ExamType;
+  examDate: string;
+  totalMarks: number;
+  questions: ExamQuestionBody[];
+}
+
+export interface CreateScanBody {
+  imageKey: string;
+  imageName?: string;
+  imageSize?: number;
+  examId?: UUID;
+}
+
+export interface ConfirmScanBody {
+  studentId: UUID;
+  marks: QuestionMarkEntryBody[];
+  remarks?: string;
+}
+
+export const EXAM_TYPE_LABELS: Record<ExamType, string> = {
+  MIDTERM: 'Midterm',
+  FINAL: 'Final',
+  SESSIONAL: 'Sessional',
+  MAKEUP: 'Makeup',
+};
+
+// ---------------------------------------------------------------------------
 // Pagination
 // ---------------------------------------------------------------------------
 export interface Page<T> {

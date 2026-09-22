@@ -198,6 +198,79 @@ public class TranscriptDataRepository {
     }
 
     /**
+     * Sum of total_marks across all exams for a PSC.
+     *
+     * <p>DRAFT exams are excluded throughout: their question list is still being
+     * edited and no marks can be recorded against them, so counting them would
+     * inflate the denominator and push every student's percentage down.
+     */
+    public double findExamsTotalMarks(UUID pscId) {
+        String sql = """
+                SELECT COALESCE(SUM(total_marks), 0)
+                FROM   exams
+                WHERE  psc_id = :pscId
+                AND    status IN ('OPEN', 'LOCKED')
+                """;
+        Double result = jdbc.queryForObject(sql, Map.of("pscId", pscId), Double.class);
+        return result != null ? result : 0.0;
+    }
+
+    /** Sum of a student's confirmed exam totals for a PSC. */
+    public double findStudentExamMarks(UUID pscId, UUID studentId) {
+        String sql = """
+                SELECT COALESCE(SUM(r.total_obtained), 0)
+                FROM   exam_results r
+                JOIN   exams e ON e.id = r.exam_id
+                WHERE  e.psc_id     = :pscId
+                AND    r.student_id = :studentId
+                AND    e.status IN ('OPEN', 'LOCKED')
+                """;
+        Double result = jdbc.queryForObject(sql,
+                Map.of("pscId", pscId, "studentId", studentId), Double.class);
+        return result != null ? result : 0.0;
+    }
+
+    /**
+     * Exam-side CLO contributions — one per mapped <em>question</em>.
+     *
+     * <p>Assignments and quizzes contribute once per assessment, because that is
+     * all they record. An exam's marks table is captured per question, so each
+     * mapped question is its own contribution against its own maximum. That
+     * makes a CLO's attainment attributable to the questions that assess it
+     * rather than to one blended exam score.
+     *
+     * <p>The outer joins matter: a student with no result for the exam still
+     * contributes zero out of the question's maximum, exactly as an unsubmitted
+     * assignment does. Dropping the row instead would quietly raise the
+     * attainment of a student who sat nothing.
+     */
+    public List<AssessmentContrib> findExamCloContributions(UUID pscId, UUID studentId, UUID cloId) {
+        String sql = """
+                SELECT COALESCE(qm.marks_obtained, 0) AS marks_obtained,
+                       q.max_marks                    AS total_marks,
+                       m.weight
+                FROM   exam_question_clo_mappings m
+                JOIN   exam_questions q ON q.id = m.question_id
+                JOIN   exams e ON e.id = q.exam_id
+                              AND e.psc_id = :pscId
+                              AND e.status IN ('OPEN', 'LOCKED')
+                LEFT JOIN exam_results r
+                       ON r.exam_id    = e.id
+                      AND r.student_id = :studentId
+                LEFT JOIN exam_question_marks qm
+                       ON qm.result_id   = r.id
+                      AND qm.question_id = q.id
+                WHERE  m.clo_id = :cloId
+                """;
+        return jdbc.query(sql,
+                Map.of("pscId", pscId, "studentId", studentId, "cloId", cloId),
+                (rs, i) -> new AssessmentContrib(
+                        rs.getDouble("marks_obtained"),
+                        rs.getDouble("total_marks"),
+                        (Double) rs.getObject("weight")));
+    }
+
+    /**
      * Assignment-side CLO contributions: marks obtained, total marks, and weight
      * for all assignments in the PSC that are mapped to the given CLO.
      */

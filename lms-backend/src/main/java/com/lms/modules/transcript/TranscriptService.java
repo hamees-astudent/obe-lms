@@ -180,9 +180,11 @@ public class TranscriptService {
 
         // Marks
         double totalMarks    = dataRepo.findAssignmentsTotalMarks(course.pscId())
-                             + dataRepo.findQuizzesTotalMarks(course.pscId());
+                             + dataRepo.findQuizzesTotalMarks(course.pscId())
+                             + dataRepo.findExamsTotalMarks(course.pscId());
         double obtainedMarks = dataRepo.findStudentAssignmentMarks(course.pscId(), studentId)
-                             + dataRepo.findStudentQuizMarks(course.pscId(), studentId);
+                             + dataRepo.findStudentQuizMarks(course.pscId(), studentId)
+                             + dataRepo.findStudentExamMarks(course.pscId(), studentId);
         double percentage    = totalMarks > 0 ? obtainedMarks / totalMarks * 100.0 : 0.0;
 
         // Grade
@@ -220,10 +222,14 @@ public class TranscriptService {
         for (CloRow clo : cloRows) {
             List<AssessmentContrib> aContribs = dataRepo.findAssignmentCloContributions(pscId, studentId, clo.id());
             List<AssessmentContrib> qContribs = dataRepo.findQuizCloContributions(pscId, studentId, clo.id());
+            // One contribution per mapped exam question, not per exam — see
+            // TranscriptDataRepository#findExamCloContributions.
+            List<AssessmentContrib> eContribs = dataRepo.findExamCloContributions(pscId, studentId, clo.id());
 
             List<AssessmentContrib> all = new ArrayList<>();
             all.addAll(aContribs);
             all.addAll(qContribs);
+            all.addAll(eContribs);
 
             if (all.isEmpty()) continue;
 

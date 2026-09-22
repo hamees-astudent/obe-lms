@@ -21,6 +21,9 @@ const AttendancePage          = lazy(() => import('@/pages/attendance/Attendance
 const CourseAttendancePage    = lazy(() => import('@/pages/attendance/CourseAttendancePage'));
 const AssessmentPage          = lazy(() => import('@/pages/assessment/AssessmentPage'));
 const CourseAssessmentPage    = lazy(() => import('@/pages/assessment/CourseAssessmentPage'));
+const ExamsPage               = lazy(() => import('@/pages/exams/ExamsPage'));
+const CourseExamsPage         = lazy(() => import('@/pages/exams/CourseExamsPage'));
+const ExamMarksPage           = lazy(() => import('@/pages/exams/ExamMarksPage'));
 const TranscriptsPage     = lazy(() => import('@/pages/transcripts/TranscriptsPage'));
 const NotificationsPage   = lazy(() => import('@/pages/notifications/NotificationsPage'));
 const UsersPage           = lazy(() => import('@/pages/users/UsersPage'));
@@ -152,6 +155,30 @@ const router = createBrowserRouter([
             element: (
               <LazyPage>
                 <CourseAssessmentPage />
+              </LazyPage>
+            ),
+          },
+          {
+            path: 'exams',
+            element: (
+              <LazyPage>
+                <ExamsPage />
+              </LazyPage>
+            ),
+          },
+          {
+            path: 'exams/:pscId',
+            element: (
+              <LazyPage>
+                <CourseExamsPage />
+              </LazyPage>
+            ),
+          },
+          {
+            path: 'exams/:pscId/:examId',
+            element: (
+              <LazyPage>
+                <ExamMarksPage />
               </LazyPage>
             ),
           },

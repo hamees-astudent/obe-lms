@@ -302,6 +302,18 @@ jwt:
 app:
   attendance:
     threshold-percentage: ${ATTENDANCE_THRESHOLD:75}
+  # ── Exam marks-sheet extraction ─────────────────────────────────────────────
+  # Reads the handwritten marks table off a photographed exam copy.
+  # With no API key set, the extractor is not created and teachers record exam
+  # marks manually — the application still starts and the module still works.
+  exams:
+    extraction:
+      enabled:         ${EXAM_EXTRACTION_ENABLED:true}
+      api-key:         ${ANTHROPIC_API_KEY:}
+      model:           ${EXAM_EXTRACTION_MODEL:claude-opus-5}
+      max-image-bytes: ${EXAM_EXTRACTION_MAX_IMAGE_BYTES:10485760}
+      timeout-seconds: ${EXAM_EXTRACTION_TIMEOUT:120}
+
   files:
     storage:
       endpoint:                  ${MINIO_ENDPOINT:http://localhost:9000}

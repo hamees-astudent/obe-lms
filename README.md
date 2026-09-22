@@ -150,6 +150,11 @@ The application reads configuration from environment variables with safe default
 | `SERVER_PORT` | `8080` | HTTP port the application listens on |
 | `MANAGEMENT_PORT` | `8081` | Actuator / metrics port |
 | `ATTENDANCE_THRESHOLD` | `75` | Attendance warning threshold (%) |
+| `ANTHROPIC_API_KEY` | *(empty)* | Claude API key for reading marks off scanned exam copies. **Leave blank to disable scanning** — the app still starts and teachers enter exam marks manually |
+| `EXAM_EXTRACTION_ENABLED` | `true` | Master switch for exam marks-sheet extraction |
+| `EXAM_EXTRACTION_MODEL` | `claude-opus-5` | Vision model used to read the marks table |
+| `EXAM_EXTRACTION_MAX_IMAGE_BYTES` | `10485760` | Largest page image accepted (10 MB) |
+| `EXAM_EXTRACTION_TIMEOUT` | `120` | Seconds to wait for one extraction |
 
 Export variables in your shell, or create a `.env` file and source it before running Maven:
 
@@ -285,6 +290,7 @@ lms-backend/
     │   │       ├── courses/         # Course catalog, CLOs, offerings, materials
     │   │       ├── enrollment/      # Student enrollment per offering
     │   │       ├── assessment/      # Assignments, quizzes, submissions, grading
+    │   │       ├── exams/           # Paper exams; marks captured by photographing copies
     │   │       ├── attendance/      # Sessions, attendance records, summaries
     │   │       ├── files/           # File uploads via MinIO, pre-signed URLs
     │   │       ├── notifications/   # In-app notifications (Kafka-driven)
@@ -292,7 +298,7 @@ lms-backend/
     │   │       └── users/           # User profiles
     │   └── resources/
     │       ├── application.yml      # All configuration with env-var placeholders
-    │       └── db/migration/        # Flyway SQL migrations (V0001 – V0017)
+    │       └── db/migration/        # Flyway SQL migrations (V0001 – V0021)
     └── test/
         └── java/com/lms/           # Unit and integration tests
 
@@ -315,6 +321,8 @@ All REST endpoints are served under `/api`. Authentication uses `Authorization: 
 | Enrollment | `/api/admin/enrollments` | ADMIN |
 | Attendance | `/api/sessions`, `/api/offerings/{id}/sessions` | TEACHER+ |
 | Assessment | `/api/offerings/{id}/assignments`, `/api/offerings/{id}/quizzes` | TEACHER+ |
+| Exams | `/api/offerings/{id}/exams`, `/api/exams/{id}` | TEACHER+ (read: any) |
+| Exam scans | `/api/exam-scans` | TEACHER+ |
 | Files | `/api/files` | Authenticated |
 | Notifications | `/api/notifications` | Authenticated (own) |
 | Transcripts | `/api/transcripts`, `/api/admin/transcripts` | ADMIN / STUDENT (own) |
