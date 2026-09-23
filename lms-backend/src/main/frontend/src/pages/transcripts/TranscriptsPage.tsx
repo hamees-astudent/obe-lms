@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { useActivePrograms } from '@/lib/queries';
 import { parseApiError } from '@/lib/apiError';
 import { toast } from '@/components/ui/Toast';
 import Spinner from '@/components/ui/Spinner';
@@ -21,7 +22,6 @@ import { useAuthStore } from '@/store/authStore';
 import type {
   TranscriptSummaryResponse,
   TranscriptResponse,
-  ProgramSummaryResponse,
   SemesterResponse,
   UserSummaryResponse,
 } from '@/types/api';
@@ -566,13 +566,7 @@ function BySemesterView({ onView }: { onView: (id: string) => void }) {
   const [loadedSemesterId, setLoadedSemesterId] = useState('');
   const [loadedProgramId, setLoadedProgramId] = useState('');
 
-  const programsQ = useQuery({
-    queryKey: ['programs', 'active'],
-    queryFn: () =>
-      api
-        .get<Page<ProgramSummaryResponse>>('/programs?status=ACTIVE&size=100')
-        .then((r) => r.data.content),
-  });
+  const programsQ = useActivePrograms();
   const programs = programsQ.data ?? [];
 
   const semesterQueries = useQueries({

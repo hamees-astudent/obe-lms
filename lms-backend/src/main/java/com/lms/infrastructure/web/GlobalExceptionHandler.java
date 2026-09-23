@@ -3,10 +3,12 @@ package com.lms.infrastructure.web;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.web.ErrorResponse;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import java.util.LinkedHashMap;
@@ -65,6 +68,42 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.badRequest().body(body);
     }
 
+    /**
+     * Every exception the parent maps ends up here, and its stock {@code detail}
+     * is framework text — "Content-Type 'application/json' is not supported",
+     * "Required request body is missing" — that the client shows verbatim. Those
+     * are replaced with a plain message for the status, and the original is
+     * logged for whoever debugs it.
+     *
+     * <p>A {@link ResponseStatusException} carries a reason the service wrote
+     * for the user ("Quiz already submitted"), so it is kept — except on a 500,
+     * where the reason may embed an internal cause.
+     */
+    @Override
+    protected ResponseEntity<Object> handleExceptionInternal(
+            Exception ex,
+            Object body,
+            HttpHeaders headers,
+            HttpStatusCode statusCode,
+            WebRequest request) {
+
+        // ErrorResponse exceptions (415, ResponseStatusException, …) arrive with
+        // no body; the parent would build it after this point, out of reach.
+        if (body == null && ex instanceof ErrorResponse errorResponse) {
+            body = errorResponse.updateAndGetBody(getMessageSource(), LocaleContextHolder.getLocale());
+        }
+        if (body instanceof ProblemDetail problem) {
+            boolean serviceMessage = ex instanceof ResponseStatusException;
+            boolean serverFault = statusCode.value() == HttpStatus.INTERNAL_SERVER_ERROR.value();
+            if (!serviceMessage || serverFault) {
+                log.warn("{} answered with {}: {}", ex.getClass().getSimpleName(),
+                        statusCode.value(), ex.getMessage());
+                problem.setDetail(userMessageFor(statusCode));
+            }
+        }
+        return super.handleExceptionInternal(ex, body, headers, statusCode, request);
+    }
+
     /** Constraint violations on {@code @RequestParam} / {@code @PathVariable}. */
     @ExceptionHandler(ConstraintViolationException.class)
     public ProblemDetail handleConstraintViolation(ConstraintViolationException ex) {
@@ -112,6 +151,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         body.setTitle("Internal Server Error");
         body.setDetail("Something went wrong on our side. Please try again.");
         return body;
+    }
+
+    static String userMessageFor(HttpStatusCode status) {
+        return switch (status.value()) {
+            case 400 -> "The request could not be understood. Please check what you entered and try again.";
+            case 401 -> "Your session has expired. Please sign in again.";
+            case 403 -> "You do not have permission to perform this action.";
+            case 404 -> "The page or item you asked for does not exist.";
+            case 405 -> "That action is not available here.";
+            case 413 -> "The file is too large to upload.";
+            case 415 -> "The upload was not sent in a format the server accepts. "
+                    + "Please try again, and contact support if it keeps happening.";
+            default -> status.is5xxServerError()
+                    ? "Something went wrong on our side. Please try again."
+                    : "The request could not be completed. Please try again.";
+        };
     }
 
     private static String lastPathNode(ConstraintViolation<?> violation) {

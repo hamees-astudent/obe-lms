@@ -70,6 +70,7 @@ function PloPanel({ programId }: { programId: UUID }) {
 
   const { data: plos = [], isLoading, isError, error, refetch } = useQuery<PloResponse[]>({
     queryKey: ['plos', programId],
+    meta: { errorShownInline: true },
     queryFn: () => api.get(`/programs/${programId}/plos`).then((r) => r.data),
   });
 

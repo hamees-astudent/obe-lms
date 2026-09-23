@@ -18,6 +18,7 @@ import {
   Target,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { useActivePrograms } from '@/lib/queries';
 import { toast } from '@/components/ui/Toast';
 import { codeField, CODE_MESSAGE, CODE_PLACEHOLDER } from '@/lib/codes';
 import { parseApiError } from '@/lib/apiError';
@@ -27,7 +28,7 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import Card from '@/components/ui/Card';
-import type { Page, UUID, ProgramSummaryResponse, PloResponse } from '@/types/api';
+import type { Page, UUID, PloResponse } from '@/types/api';
 
 // ---------------------------------------------------------------------------
 // Local types (aligned with Java backend DTOs)
@@ -108,13 +109,7 @@ function CloPloMappingEditor({ clo }: { clo: CourseCloItem }) {
   const [weight, setWeight] = useState('');
   const [error, setError] = useState('');
 
-  const programsQ = useQuery({
-    queryKey: ['programs', 'active'],
-    queryFn: () =>
-      api
-        .get<Page<ProgramSummaryResponse>>('/programs?status=ACTIVE&size=100')
-        .then((r) => r.data.content),
-  });
+  const programsQ = useActivePrograms();
   const programs = programsQ.data ?? [];
 
   const plosQ = useQuery({

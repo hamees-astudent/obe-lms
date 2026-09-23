@@ -150,6 +150,7 @@ The application reads configuration from environment variables with safe default
 | `SERVER_PORT` | `8080` | HTTP port the application listens on |
 | `MANAGEMENT_PORT` | `8081` | Actuator / metrics port |
 | `ATTENDANCE_THRESHOLD` | `75` | Attendance warning threshold (%) |
+| `APP_TIME_ZONE` | `Asia/Karachi` | Zone the backend runs in. Deadlines and quiz timers are stored without a zone and read by browsers as local time, so this must be the users' zone. An invalid zone ID stops startup |
 | `ANTHROPIC_API_KEY` | *(empty)* | Claude API key for reading marks off scanned exam copies. **Leave blank to disable scanning** — the app still starts and teachers enter exam marks manually |
 | `EXAM_EXTRACTION_ENABLED` | `true` | Master switch for exam marks-sheet extraction |
 | `EXAM_EXTRACTION_MODEL` | `claude-opus-5` | Vision model used to read the marks table |

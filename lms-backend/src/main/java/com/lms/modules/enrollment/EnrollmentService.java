@@ -40,11 +40,26 @@ public class EnrollmentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Course offering not found: " + pscId));
 
-        if (maxCapacity > 0) {
-            long active = enrollmentRepository.countByPscIdAndStatus(pscId, "ACTIVE");
-            if (active >= maxCapacity) {
+        // Staff can be assigned on the offering (teacher of record) or as course
+        // members; both are kept, but one person must not hold both at once.
+        boolean isTeacherOfRecord = enrollmentRepository.findTeacherIdByPscId(pscId)
+                .map(id -> id.equals(studentId.toString()))
+                .orElse(false);
+        if (isTeacherOfRecord) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This user is already the teacher of record for this offering. "
+                    + "To change their role, change the teacher on the offering instead.");
+        }
+
+        // Capacity is a limit on students. Staff memberships neither count toward
+        // it nor are blocked by it — counting them let adding an assistant or
+        // co-teacher fill the class.
+        if (maxCapacity > 0 && "STUDENT".equals(courseRole)) {
+            long students = enrollmentRepository.countByPscIdAndStatusAndCourseRole(
+                    pscId, "ACTIVE", "STUDENT");
+            if (students >= maxCapacity) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Course offering is at full capacity (" + maxCapacity + ")");
+                        "Course offering is at full student capacity (" + maxCapacity + ")");
             }
         }
 

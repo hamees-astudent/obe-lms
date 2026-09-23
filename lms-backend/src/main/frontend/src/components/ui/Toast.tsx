@@ -49,7 +49,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const push = useCallback(
     (variant: ToastVariant, message: string) => {
       const id = Date.now() + Math.random();
-      setToasts((current) => [...current, { id, variant, message }]);
+      // One outage fails many requests at once (a query per semester, say);
+      // show the message once rather than stacking identical toasts.
+      setToasts((current) =>
+        current.some((t) => t.variant === variant && t.message === message)
+          ? current
+          : [...current, { id, variant, message }],
+      );
       // Errors linger — the user may need to read and act on them.
       setTimeout(() => dismiss(id), variant === 'error' ? 8000 : 4000);
     },

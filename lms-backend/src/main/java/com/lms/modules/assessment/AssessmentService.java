@@ -2,6 +2,7 @@ package com.lms.modules.assessment;
 
 import com.lms.infrastructure.messaging.KafkaEventPublisher;
 import com.lms.modules.assessment.dto.*;
+import com.lms.shared.OfferingStaff;
 import com.lms.shared.events.AssessmentEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -21,6 +23,9 @@ import java.util.*;
 @Transactional
 public class AssessmentService {
 
+    /** How late a timed submit's answers may arrive and still count. */
+    static final Duration SUBMIT_GRACE = Duration.ofSeconds(30);
+
     private final AssignmentRepository             assignmentRepository;
     private final AssignmentSubmissionRepository   submissionRepository;
     private final QuizRepository                   quizRepository;
@@ -29,10 +34,16 @@ public class AssessmentService {
     private final AssignmentCloMappingRepository   assignmentCloMappingRepository;
     private final QuizCloMappingRepository         quizCloMappingRepository;
     private final KafkaEventPublisher              kafkaEventPublisher;
+    /**
+     * Staff writes (and reads of submissions and answer keys) are limited to
+     * offerings the user runs; admins pass. See {@link OfferingStaff}.
+     */
+    private final OfferingStaff                    offeringStaff;
 
     // ── Assignments ───────────────────────────────────────────────────────────
 
-    public AssignmentResponse createAssignment(UUID createdBy, CreateAssignmentRequest req) {
+    public AssignmentResponse createAssignment(UUID createdBy, boolean isAdmin, CreateAssignmentRequest req) {
+        offeringStaff.require(req.getPscId(), createdBy, isAdmin);
         Assignment a = new Assignment();
         a.setPscId(req.getPscId());
         a.setCreatedBy(createdBy);
@@ -86,8 +97,10 @@ public class AssessmentService {
         return toAssignmentResponse(findAssignment(id));
     }
 
-    public AssignmentResponse updateAssignment(UUID id, UpdateAssignmentRequest req) {
+    public AssignmentResponse updateAssignment(UUID id, UpdateAssignmentRequest req,
+                                               UUID actorId, boolean isAdmin) {
         Assignment a = findAssignment(id);
+        offeringStaff.require(a.getPscId(), actorId, isAdmin);
         a.setTitle(req.getTitle());
         a.setDescription(req.getDescription());
         a.setTotalMarks(req.getTotalMarks());
@@ -97,10 +110,8 @@ public class AssessmentService {
         return toAssignmentResponse(assignmentRepository.save(a));
     }
 
-    public void deleteAssignment(UUID id) {
-        if (!assignmentRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Assignment not found");
-        }
+    public void deleteAssignment(UUID id, UUID actorId, boolean isAdmin) {
+        offeringStaff.require(findAssignment(id).getPscId(), actorId, isAdmin);
         assignmentRepository.deleteById(id);
     }
 
@@ -161,9 +172,10 @@ public class AssessmentService {
     }
 
     public AssignmentSubmissionResponse gradeSubmission(UUID submissionId, UUID gradedBy,
-                                                         GradeSubmissionRequest req) {
+                                                         boolean isAdmin, GradeSubmissionRequest req) {
         AssignmentSubmission sub = findSubmission(submissionId);
         Assignment assignment = findAssignment(sub.getAssignmentId());
+        offeringStaff.require(assignment.getPscId(), gradedBy, isAdmin);
 
         if (req.getMarksObtained().compareTo(assignment.getTotalMarks()) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -204,13 +216,16 @@ public class AssessmentService {
     }
 
     @Transactional(readOnly = true)
-    public AssignmentSubmissionResponse getSubmission(UUID submissionId) {
-        return toSubmissionResponse(findSubmission(submissionId));
+    public AssignmentSubmissionResponse getSubmission(UUID submissionId, UUID actorId, boolean isAdmin) {
+        AssignmentSubmission sub = findSubmission(submissionId);
+        offeringStaff.require(findAssignment(sub.getAssignmentId()).getPscId(), actorId, isAdmin);
+        return toSubmissionResponse(sub);
     }
 
     @Transactional(readOnly = true)
-    public List<AssignmentSubmissionResponse> listSubmissions(UUID assignmentId) {
-        findAssignment(assignmentId); // verify exists
+    public List<AssignmentSubmissionResponse> listSubmissions(UUID assignmentId,
+                                                              UUID actorId, boolean isAdmin) {
+        offeringStaff.require(findAssignment(assignmentId).getPscId(), actorId, isAdmin);
         return submissionRepository.findAllByAssignmentId(assignmentId)
                 .stream().map(this::toSubmissionResponse).toList();
     }
@@ -224,7 +239,8 @@ public class AssessmentService {
 
     // ── Quizzes ───────────────────────────────────────────────────────────────
 
-    public QuizResponse createQuiz(UUID createdBy, CreateQuizRequest req) {
+    public QuizResponse createQuiz(UUID createdBy, boolean isAdmin, CreateQuizRequest req) {
+        offeringStaff.require(req.getPscId(), createdBy, isAdmin);
         Quiz q = new Quiz();
         q.setPscId(req.getPscId());
         q.setCreatedBy(createdBy);
@@ -270,8 +286,9 @@ public class AssessmentService {
         return toQuizResponse(findQuiz(id));
     }
 
-    public QuizResponse updateQuiz(UUID id, UpdateQuizRequest req) {
+    public QuizResponse updateQuiz(UUID id, UpdateQuizRequest req, UUID actorId, boolean isAdmin) {
         Quiz q = findQuiz(id);
+        offeringStaff.require(q.getPscId(), actorId, isAdmin);
         q.setTitle(req.getTitle());
         q.setDescription(req.getDescription());
         q.setDurationMinutes(req.getDurationMinutes());
@@ -282,18 +299,18 @@ public class AssessmentService {
         return toQuizResponse(quizRepository.save(q));
     }
 
-    public void deleteQuiz(UUID id) {
-        if (!quizRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Quiz not found");
-        }
+    public void deleteQuiz(UUID id, UUID actorId, boolean isAdmin) {
+        offeringStaff.require(findQuiz(id).getPscId(), actorId, isAdmin);
         quizRepository.deleteById(id);
     }
 
     // ── Quiz Questions ────────────────────────────────────────────────────────
 
-    public QuizQuestionResponse addQuestion(UUID quizId, CreateQuizQuestionRequest req) {
+    public QuizQuestionResponse addQuestion(UUID quizId, CreateQuizQuestionRequest req,
+                                            UUID actorId, boolean isAdmin) {
         Quiz quiz = findQuiz(quizId);
-        validateQuestion(req.getType(), req.getCorrectAnswer());
+        offeringStaff.require(quiz.getPscId(), actorId, isAdmin);
+        validateQuestion(req.getType(), req.getOptions(), req.getCorrectAnswer());
 
         QuizQuestion qq = new QuizQuestion();
         qq.setQuizId(quizId);
@@ -314,9 +331,11 @@ public class AssessmentService {
         return toQuestionResponse(saved, true);
     }
 
-    public QuizQuestionResponse updateQuestion(UUID questionId, UpdateQuizQuestionRequest req) {
+    public QuizQuestionResponse updateQuestion(UUID questionId, UpdateQuizQuestionRequest req,
+                                               UUID actorId, boolean isAdmin) {
         QuizQuestion qq = findQuestion(questionId);
-        validateQuestion(req.getType(), req.getCorrectAnswer());
+        offeringStaff.require(findQuiz(qq.getQuizId()).getPscId(), actorId, isAdmin);
+        validateQuestion(req.getType(), req.getOptions(), req.getCorrectAnswer());
 
         BigDecimal oldMarks = qq.getMarks();
 
@@ -340,9 +359,10 @@ public class AssessmentService {
         return toQuestionResponse(saved, true);
     }
 
-    public void deleteQuestion(UUID questionId) {
+    public void deleteQuestion(UUID questionId, UUID actorId, boolean isAdmin) {
         QuizQuestion qq = findQuestion(questionId);
         Quiz quiz = findQuiz(qq.getQuizId());
+        offeringStaff.require(quiz.getPscId(), actorId, isAdmin);
 
         questionRepository.deleteById(questionId);
 
@@ -351,7 +371,15 @@ public class AssessmentService {
     }
 
     @Transactional(readOnly = true)
-    public List<QuizQuestionResponse> listQuestions(UUID quizId, boolean includeCorrectAnswers) {
+    /**
+     * Correct answers are shown only to admins and to staff of this quiz's
+     * offering — not to every user with a staff role, which let any teacher
+     * read the answer key of any course's quiz.
+     */
+    public List<QuizQuestionResponse> listQuestions(UUID quizId, UUID userId, boolean isAdmin,
+                                                    boolean hasStaffRole) {
+        boolean includeCorrectAnswers = isAdmin
+                || (hasStaffRole && offeringStaff.isStaff(findQuiz(quizId).getPscId(), userId));
         return questionRepository.findAllByQuizIdOrderByOrderIndexAsc(quizId)
                 .stream().map(qq -> toQuestionResponse(qq, includeCorrectAnswers)).toList();
     }
@@ -417,14 +445,55 @@ public class AssessmentService {
      * tab open, so the deadline is decided here.
      */
     private boolean isTimeUp(Quiz quiz, QuizSubmission sub) {
+        return isTimeUp(quiz, sub, Duration.ZERO);
+    }
+
+    private boolean isTimeUp(Quiz quiz, QuizSubmission sub, Duration grace) {
         if (quiz.getDurationMinutes() == null) {
             return false;
         }
-        return LocalDateTime.now().isAfter(
-                sub.getStartedAt().plusMinutes(quiz.getDurationMinutes()));
+        return LocalDateTime.now().isAfter(deadlineOf(quiz, sub).plus(grace));
     }
 
-    public QuizSubmissionResponse submitQuiz(UUID submissionId, UUID studentId) {
+    private static LocalDateTime deadlineOf(Quiz quiz, QuizSubmission sub) {
+        return sub.getStartedAt().plusMinutes(quiz.getDurationMinutes());
+    }
+
+    /**
+     * Seconds left on a timed, unsubmitted attempt; null otherwise.
+     *
+     * <p>Computed here and sent as a duration so the browser's countdown never
+     * compares a server timestamp against its own clock — which a timezone or
+     * clock difference between the two turns into an attempt that looks expired
+     * the moment it starts.
+     */
+    private Long remainingSeconds(QuizSubmission sub) {
+        if (sub.getSubmittedAt() != null) {
+            return null;
+        }
+        Quiz quiz = quizRepository.findById(sub.getQuizId()).orElse(null);
+        if (quiz == null || quiz.getDurationMinutes() == null) {
+            return null;
+        }
+        long left = Duration.between(LocalDateTime.now(), deadlineOf(quiz, sub)).getSeconds();
+        return Math.max(0, left);
+    }
+
+    /**
+     * Submits and grades an attempt.
+     *
+     * <p>The final answers travel with the submit call rather than in a
+     * separate save first. As two calls, an auto-submit fired by the timer at
+     * 0:00 reached the save after the deadline, was refused with "Time is up",
+     * and never reached the submit — the attempt stayed open and the answers
+     * were lost. Answers arriving within {@link #SUBMIT_GRACE} of the deadline
+     * are accepted to absorb that network delay; later ones are ignored and the
+     * last saved answers are graded.
+     *
+     * @param finalAnswers the answers to grade, or null to grade those saved
+     */
+    public QuizSubmissionResponse submitQuiz(UUID submissionId, UUID studentId,
+                                             Map<String, List<String>> finalAnswers) {
         QuizSubmission sub = findQuizSubmission(submissionId);
         requireOwnership(sub.getStudentId(), studentId);
 
@@ -433,6 +502,14 @@ public class AssessmentService {
         }
 
         Quiz quiz = findQuiz(sub.getQuizId());
+
+        if (finalAnswers != null) {
+            if (isTimeUp(quiz, sub, SUBMIT_GRACE)) {
+                log.info("Ignoring answers sent after the deadline for quiz submission {}", submissionId);
+            } else {
+                sub.setAnswers(finalAnswers);
+            }
+        }
 
         BigDecimal score = autoGrade(sub.getQuizId(), sub.getAnswers());
         sub.setScore(score);
@@ -463,13 +540,15 @@ public class AssessmentService {
     }
 
     @Transactional(readOnly = true)
-    public QuizSubmissionResponse getQuizSubmission(UUID submissionId) {
-        return toQuizSubmissionResponse(findQuizSubmission(submissionId));
+    public QuizSubmissionResponse getQuizSubmission(UUID submissionId, UUID actorId, boolean isAdmin) {
+        QuizSubmission sub = findQuizSubmission(submissionId);
+        offeringStaff.require(findQuiz(sub.getQuizId()).getPscId(), actorId, isAdmin);
+        return toQuizSubmissionResponse(sub);
     }
 
     @Transactional(readOnly = true)
-    public List<QuizSubmissionResponse> listQuizSubmissions(UUID quizId) {
-        findQuiz(quizId); // verify exists
+    public List<QuizSubmissionResponse> listQuizSubmissions(UUID quizId, UUID actorId, boolean isAdmin) {
+        offeringStaff.require(findQuiz(quizId).getPscId(), actorId, isAdmin);
         return quizSubmissionRepository.findAllByQuizId(quizId)
                 .stream().map(this::toQuizSubmissionResponse).toList();
     }
@@ -483,8 +562,10 @@ public class AssessmentService {
 
     // ── CLO Mappings: Assignments ─────────────────────────────────────────────
 
-    public CloMappingResponse addAssignmentCloMapping(UUID assignmentId, CloMappingRequest req) {
+    public CloMappingResponse addAssignmentCloMapping(UUID assignmentId, CloMappingRequest req,
+                                                      UUID actorId, boolean isAdmin) {
         Assignment assignment = findAssignment(assignmentId);
+        offeringStaff.require(assignment.getPscId(), actorId, isAdmin);
 
         if (assignmentCloMappingRepository.existsById_AssignmentIdAndId_CloId(assignmentId, req.getCloId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "CLO mapping already exists");
@@ -494,7 +575,8 @@ public class AssessmentService {
         return toAssignmentCloMappingResponse(assignmentCloMappingRepository.save(mapping));
     }
 
-    public void removeAssignmentCloMapping(UUID assignmentId, UUID cloId) {
+    public void removeAssignmentCloMapping(UUID assignmentId, UUID cloId, UUID actorId, boolean isAdmin) {
+        offeringStaff.require(findAssignment(assignmentId).getPscId(), actorId, isAdmin);
         if (!assignmentCloMappingRepository.existsById_AssignmentIdAndId_CloId(assignmentId, cloId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "CLO mapping not found");
         }
@@ -509,8 +591,10 @@ public class AssessmentService {
 
     // ── CLO Mappings: Quizzes ─────────────────────────────────────────────────
 
-    public CloMappingResponse addQuizCloMapping(UUID quizId, CloMappingRequest req) {
+    public CloMappingResponse addQuizCloMapping(UUID quizId, CloMappingRequest req,
+                                                UUID actorId, boolean isAdmin) {
         Quiz quiz = findQuiz(quizId);
+        offeringStaff.require(quiz.getPscId(), actorId, isAdmin);
 
         if (quizCloMappingRepository.existsById_QuizIdAndId_CloId(quizId, req.getCloId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "CLO mapping already exists");
@@ -520,7 +604,8 @@ public class AssessmentService {
         return toQuizCloMappingResponse(quizCloMappingRepository.save(mapping));
     }
 
-    public void removeQuizCloMapping(UUID quizId, UUID cloId) {
+    public void removeQuizCloMapping(UUID quizId, UUID cloId, UUID actorId, boolean isAdmin) {
+        offeringStaff.require(findQuiz(quizId).getPscId(), actorId, isAdmin);
         if (!quizCloMappingRepository.existsById_QuizIdAndId_CloId(quizId, cloId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "CLO mapping not found");
         }
@@ -609,10 +694,44 @@ public class AssessmentService {
                 .max(BigDecimal.ZERO);
     }
 
-    private void validateQuestion(String type, List<String> correctAnswer) {
+    /**
+     * Rejects a question no student could answer correctly.
+     *
+     * <p>Only the MCQ answer count used to be checked, so correct answers that
+     * named no option were stored — the question builder was sending its own
+     * internal row keys instead of option ids — and every student scored zero
+     * on the question with nothing to show why.
+     */
+    private void validateQuestion(String type, List<Map<String, Object>> options,
+                                  List<String> correctAnswer) {
+        Set<String> optionIds = new HashSet<>();
+        for (Map<String, Object> option : options) {
+            Object id = option.get("id");
+            Object text = option.get("text");
+            if (!(id instanceof String s) || s.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Every option needs an id");
+            }
+            if (!(text instanceof String t) || t.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Every option needs some text");
+            }
+            if (!optionIds.add(s)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Two options share the id \"" + s + "\"");
+            }
+        }
+        if (!optionIds.containsAll(correctAnswer)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The correct answer must be one of the question's options");
+        }
+        if (new HashSet<>(correctAnswer).size() != correctAnswer.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The same option is marked correct twice");
+        }
         if ("MCQ".equals(type) && correctAnswer.size() != 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "MCQ must have exactly one correct answer");
+                    "A multiple-choice question must have exactly one correct answer");
         }
     }
 
@@ -713,6 +832,7 @@ public class AssessmentService {
                 .studentId(s.getStudentId())
                 .answers(s.getAnswers())
                 .startedAt(s.getStartedAt())
+                .remainingSeconds(remainingSeconds(s))
                 .submittedAt(s.getSubmittedAt())
                 .score(s.getScore())
                 .autoGraded(s.isAutoGraded())

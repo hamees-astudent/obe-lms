@@ -1,5 +1,6 @@
 package com.lms.modules.exams;
 
+import com.lms.shared.OfferingStaff;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -23,6 +24,7 @@ import java.util.UUID;
 public class ExamDataRepository {
 
     private final NamedParameterJdbcTemplate jdbc;
+    private final OfferingStaff offeringStaff;
 
     // ── Inner data records ──────────────────────────────────────────────────
 
@@ -128,8 +130,8 @@ public class ExamDataRepository {
     }
 
     /**
-     * Offerings a user may record marks for — as primary teacher, or through a
-     * TEACHER / ASSISTANT enrollment row (the course-assistant path).
+     * Offerings a user may record marks for — the same three-way rule as
+     * {@link OfferingStaff}; keep them in step.
      *
      * <p>Used to resolve a standalone scan: the extracted course code is matched
      * only against offerings this teacher actually runs, so one teacher's scan
@@ -146,28 +148,19 @@ public class ExamDataRepository {
                       AND e.student_id = :teacherId
                       AND e.course_role IN ('TEACHER', 'ASSISTANT')
                       AND e.status = 'ACTIVE'
+                LEFT JOIN course_assistants ca
+                       ON ca.psc_id = psc.id
+                      AND ca.user_id = :teacherId
                 WHERE  psc.teacher_id = :teacherId
                    OR  e.id IS NOT NULL
+                   OR  ca.user_id IS NOT NULL
                 """;
         return jdbc.query(sql, Map.of("teacherId", teacherId), OFFERING_MAPPER);
     }
 
-    /** Whether a user may record marks for this offering. */
+    /** Whether a user may record marks for this offering. See {@link OfferingStaff}. */
     public boolean canManageOffering(UUID pscId, UUID userId) {
-        String sql = """
-                SELECT COUNT(*)
-                FROM   program_semester_courses psc
-                LEFT JOIN enrollments e
-                       ON e.psc_id = psc.id
-                      AND e.student_id = :userId
-                      AND e.course_role IN ('TEACHER', 'ASSISTANT')
-                      AND e.status = 'ACTIVE'
-                WHERE  psc.id = :pscId
-                AND   (psc.teacher_id = :userId OR e.id IS NOT NULL)
-                """;
-        Integer count = jdbc.queryForObject(sql,
-                Map.of("pscId", pscId, "userId", userId), Integer.class);
-        return count != null && count > 0;
+        return offeringStaff.isStaff(pscId, userId);
     }
 
     // ── CLOs ────────────────────────────────────────────────────────────────

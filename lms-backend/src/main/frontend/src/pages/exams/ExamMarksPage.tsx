@@ -13,6 +13,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { nullIfNotFound } from '@/lib/queries';
 import { toast } from '@/components/ui/Toast';
 import { parseApiError } from '@/lib/apiError';
 import { formatDate, formatDateTime } from '@/lib/datetime';
@@ -136,7 +137,6 @@ function ReviewModal({ exam, scan, roster, onClose }: ReviewModalProps) {
       toast.success(`Marks recorded for ${result.studentName ?? 'the student'}`);
       onClose();
     },
-    onError: (error) => toast.error(parseApiError(error)),
   });
 
   return (
@@ -350,7 +350,6 @@ function ManualEntryModal({
       toast.success(`Marks recorded for ${result.studentName ?? 'the student'}`);
       onClose();
     },
-    onError: (error) => toast.error(parseApiError(error)),
   });
 
   return (
@@ -551,6 +550,7 @@ export default function ExamMarksPage() {
 
   const examQ = useQuery({
     queryKey: ['exams', examId],
+    meta: { errorShownInline: true },
     queryFn: () => api.get<ExamResponse>(`/exams/${examId}`).then((r) => r.data),
     enabled: !!examId,
   });
@@ -579,7 +579,6 @@ export default function ExamMarksPage() {
     mutationFn: (scanId: UUID) =>
       api.get<ScanReviewResponse>(`/exam-scans/${scanId}`).then((r) => r.data),
     onSuccess: (scan) => setReviewing(scan),
-    onError: (error) => toast.error(parseApiError(error)),
   });
 
   const discardMutation = useMutation({
@@ -588,7 +587,6 @@ export default function ExamMarksPage() {
       queryClient.invalidateQueries({ queryKey: ['exams', examId, 'scans'] });
       toast.success('Scan discarded');
     },
-    onError: (error) => toast.error(parseApiError(error)),
   });
 
   const deleteResultMutation = useMutation({
@@ -597,7 +595,6 @@ export default function ExamMarksPage() {
       queryClient.invalidateQueries({ queryKey: ['exams', examId] });
       toast.success('Marks removed');
     },
-    onError: (error) => toast.error(parseApiError(error)),
   });
 
   if (examQ.isError) {
@@ -850,10 +847,14 @@ export default function ExamMarksPage() {
 function StudentResultView({ examId, studentId }: { examId: UUID; studentId: UUID }) {
   const resultQ = useQuery({
     queryKey: ['exams', examId, 'results', studentId],
+    meta: { errorShownInline: true },
+    // 404 means the marks aren't published yet: an answer, not a failure.
     queryFn: () =>
-      api
-        .get<ExamResultResponse>(`/exams/${examId}/results/${studentId}`)
-        .then((r) => r.data),
+      nullIfNotFound(
+        api
+          .get<ExamResultResponse>(`/exams/${examId}/results/${studentId}`)
+          .then((r) => r.data),
+      ),
     retry: false,
   });
 
@@ -864,7 +865,10 @@ function StudentResultView({ examId, studentId }: { examId: UUID; studentId: UUI
       </div>
     );
   }
-  if (resultQ.isError || !resultQ.data) {
+  if (resultQ.isError) {
+    return <QueryError error={resultQ.error} onRetry={() => resultQ.refetch()} />;
+  }
+  if (!resultQ.data) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white py-12 text-center">
         <p className="text-sm text-gray-400">Your marks for this exam are not published yet.</p>

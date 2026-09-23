@@ -140,6 +140,10 @@ spring:
             acks: all              # wait for all in-sync replicas
             retries: 3
             enable.idempotence: true
+            # How long a send may wait for broker metadata (default 60 s).
+            # Sends run on the event-publish pool, not request threads, but a
+            # dead broker should still free those threads quickly.
+            max.block.ms: 10000
           configuration:
             security.protocol: PLAINTEXT
         bindings:

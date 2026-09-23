@@ -40,19 +40,15 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
             @Param("studentId") UUID studentId);
 
     /**
-     * Whether the user runs this offering — its teacher of record, or one of its
-     * assigned assistants. Native, to avoid a cross-module ORM dependency on the
-     * courses module.
+     * Ids (as text) of the offering's actively enrolled students — the only
+     * people attendance can be recorded for.
      */
     @Query(value = """
-            SELECT EXISTS (
-                SELECT 1 FROM program_semester_courses psc
-                WHERE  psc.id = :pscId AND psc.teacher_id = :userId
-                UNION ALL
-                SELECT 1 FROM course_assistants ca
-                WHERE  ca.psc_id = :pscId AND ca.user_id = :userId)
+            SELECT CAST(e.student_id AS text)
+            FROM   enrollments e
+            WHERE  e.psc_id = :pscId
+            AND    e.status = 'ACTIVE'
+            AND    e.course_role = 'STUDENT'
             """, nativeQuery = true)
-    boolean isStaffOfOffering(
-            @Param("pscId") UUID pscId,
-            @Param("userId") UUID userId);
+    List<String> findActiveStudentIds(@Param("pscId") UUID pscId);
 }

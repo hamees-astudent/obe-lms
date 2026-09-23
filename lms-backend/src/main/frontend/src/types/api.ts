@@ -195,6 +195,19 @@ export const ENROLLMENT_STATUS = {
   COMPLETED: 'COMPLETED',
 } as const satisfies Record<Uppercase<string>, EnrollmentStatus>;
 
+/** An offering the current user teaches or assists, from `/me/teaching-offerings`. */
+export interface TeachingOfferingResponse {
+  id: UUID;
+  semesterId: UUID;
+  semesterName: string;
+  programName: string;
+  courseId: UUID;
+  courseCode: string;
+  courseName: string;
+  creditHours: number;
+  teacherId: UUID;
+}
+
 export interface EnrollmentResponse {
   id: UUID;
   pscId: UUID;
@@ -445,6 +458,8 @@ export interface QuizSubmissionResponse {
   studentId: UUID;
   answers: Record<string, string[]>; // questionId → selected option ids
   startedAt: string;
+  /** Seconds left on a timed attempt in progress, computed by the server. */
+  remainingSeconds?: number;
   submittedAt?: string;
   score?: number;
   autoGraded: boolean;

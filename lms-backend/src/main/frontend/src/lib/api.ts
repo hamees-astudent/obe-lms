@@ -1,10 +1,13 @@
 import axios, { type AxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/store/authStore';
+import { toast } from '@/components/ui/Toast';
 import type { LoginResponse } from '@/types/api';
 
+// No default Content-Type: axios picks it per request — JSON for plain objects,
+// multipart with a boundary for FormData. Forcing 'application/json' here made
+// axios serialise every FormData upload to JSON, which /api/files rejects (415).
 const api = axios.create({
   baseURL: '/api',
-  headers: { 'Content-Type': 'application/json' },
   timeout: 30_000,
 });
 
@@ -81,6 +84,10 @@ api.interceptors.response.use(
         original.headers = { ...original.headers, Authorization: `Bearer ${accessToken}` };
         return api(original);
       } catch {
+        // Without this the user is dropped on the login page with no idea why.
+        // Only here: a 401 from /auth/login itself is a wrong password, not an
+        // expired session, and reaches the logout below instead.
+        toast.info('Your session has expired. Please sign in again.');
         useAuthStore.getState().logout();
         return Promise.reject(error);
       }

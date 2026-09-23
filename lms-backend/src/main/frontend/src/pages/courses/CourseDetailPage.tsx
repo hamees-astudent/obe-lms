@@ -241,8 +241,8 @@ function MaterialCloMappings({
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
+  const isAdmin = useAuthStore((s) => s.user?.role === 'ADMIN');
   const [cloId, setCloId] = useState('');
-  const [error, setError] = useState('');
 
   const mappingsQ = useQuery({
     queryKey: ['materials', material.id, 'clo-mappings'],
@@ -265,18 +265,16 @@ function MaterialCloMappings({
 
   const addMut = useMutation({
     mutationFn: () => api.post(`/materials/${material.id}/clo-mappings`, { cloId }),
+    // Failures are reported by the global mutation toast.
     onSuccess: () => {
       invalidate();
       setCloId('');
-      setError('');
     },
-    onError: (err) => setError(parseApiError(err)),
   });
 
   const removeMut = useMutation({
     mutationFn: (target: UUID) => api.delete(`/materials/${material.id}/clo-mappings/${target}`),
     onSuccess: invalidate,
-    onError: (err) => setError(parseApiError(err)),
   });
 
   const unmapped = clos.filter((c) => !mappings.some((m) => m.cloId === c.id));
@@ -310,6 +308,19 @@ function MaterialCloMappings({
         <span className="text-xs text-gray-400">none mapped</span>
       )}
 
+      {/* Without this the editor showed only "none mapped" and no control,
+          which read as broken: CLOs are defined per course by an admin, and
+          until they are there is nothing to map to. */}
+      {canManage && closQ.isSuccess && clos.length === 0 && (
+        <span className="text-xs text-gray-400">
+          · this course has no CLOs yet
+          {isAdmin ? ' — add them in the Course catalog' : ' — ask an admin to add them'}
+        </span>
+      )}
+      {canManage && closQ.isSuccess && clos.length > 0 && unmapped.length === 0 && (
+        <span className="text-xs text-gray-400">· all CLOs mapped</span>
+      )}
+
       {canManage && unmapped.length > 0 && (
         <>
           <select
@@ -334,7 +345,6 @@ function MaterialCloMappings({
           </button>
         </>
       )}
-      {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
   );
 }

@@ -47,6 +47,18 @@ class GlobalExceptionHandlerTest {
             throw new IllegalStateException("connection pool exhausted at line 42");
         }
 
+        @GetMapping("/io-failure")
+        String ioFailure() {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to read uploaded file: /tmp/upload_8841.tmp (No such file)");
+        }
+
+        @GetMapping("/unavailable")
+        String unavailable() {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Marks scanning is not configured on this server. Enter the marks manually.");
+        }
+
         @PostMapping("/validated")
         String validated(@RequestBody @Valid Payload payload) {
             return "ok";
@@ -97,5 +109,45 @@ class GlobalExceptionHandlerTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.detail")
                         .value("Something went wrong on our side. Please try again."));
+    }
+
+    @Test
+    @DisplayName("a wrong Content-Type is a 415 in plain words, not Spring's wording")
+    void unsupportedMediaTypeIsPlain() throws Exception {
+        mvc.perform(post("/test/validated")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("title=x"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.detail").value(
+                        GlobalExceptionHandler.userMessageFor(HttpStatus.UNSUPPORTED_MEDIA_TYPE)));
+    }
+
+    @Test
+    @DisplayName("an unreadable body is a 400 in plain words, not a parser message")
+    void malformedBodyIsPlain() throws Exception {
+        mvc.perform(post("/test/validated")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\": "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(
+                        GlobalExceptionHandler.userMessageFor(HttpStatus.BAD_REQUEST)));
+    }
+
+    @Test
+    @DisplayName("a 500 thrown by a service does not leak its internal reason")
+    void serviceServerFaultIsOpaque() throws Exception {
+        mvc.perform(get("/test/io-failure"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.detail")
+                        .value("Something went wrong on our side. Please try again."));
+    }
+
+    @Test
+    @DisplayName("a service's own 503 message is kept, since it tells the user what to do")
+    void serviceUnavailableKeepsMessage() throws Exception {
+        mvc.perform(get("/test/unavailable"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.detail").value(
+                        "Marks scanning is not configured on this server. Enter the marks manually."));
     }
 }

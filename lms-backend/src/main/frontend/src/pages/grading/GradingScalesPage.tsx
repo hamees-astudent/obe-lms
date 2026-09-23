@@ -228,6 +228,7 @@ export default function GradingScalesPage() {
 
   const { data: scales = [], isLoading, isError, error, refetch } = useQuery<GradingScaleResponse[]>({
     queryKey: ['grading-scales', programFilter],
+    meta: { errorShownInline: true },
     queryFn: () =>
       api
         .get('/admin/grading-scales', { params: programFilter ? { programId: programFilter } : {} })

@@ -17,6 +17,8 @@ public class QuizSubmissionResponse {
     UUID studentId;
     Map<String, List<String>> answers;
     LocalDateTime startedAt;
+    /** Seconds left on a timed attempt still in progress; absent otherwise. */
+    Long remainingSeconds;
     LocalDateTime submittedAt;
     BigDecimal score;
     boolean autoGraded;

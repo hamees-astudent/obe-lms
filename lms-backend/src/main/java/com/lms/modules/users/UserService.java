@@ -77,18 +77,33 @@ public class UserService {
         return toDetail(userRepository.save(user));
     }
 
+    /*
+     * Self-modification guards (changeRole, changeStatus). An admin who demotes
+     * or deactivates their own account loses access mid-session, and if they
+     * were the only admin nobody can undo it short of editing the database.
+     * Enforced here, not only in the UI, since the API is callable directly.
+     * Another admin can still make either change.
+     */
     @Transactional
     @CacheEvict(value = CacheNames.USERS, key = "#id")
-    public UserSummaryResponse changeRole(UUID id, ChangeRoleRequest req) {
+    public UserSummaryResponse changeRole(UUID id, ChangeRoleRequest req, UUID actorId) {
         var user = requireUser(id);
+        if (id.equals(actorId) && req.role() != user.getRole()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You cannot change your own role. Ask another administrator to do it.");
+        }
         user.setRole(req.role());
         return toSummary(userRepository.save(user));
     }
 
     @Transactional
     @CacheEvict(value = CacheNames.USERS, key = "#id")
-    public UserSummaryResponse changeStatus(UUID id, ChangeStatusRequest req) {
+    public UserSummaryResponse changeStatus(UUID id, ChangeStatusRequest req, UUID actorId) {
         var user = requireUser(id);
+        if (id.equals(actorId) && !"ACTIVE".equals(req.status())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You cannot deactivate or suspend your own account.");
+        }
         user.setStatus(req.status());
         return toSummary(userRepository.save(user));
     }

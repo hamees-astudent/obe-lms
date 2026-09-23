@@ -3,6 +3,7 @@ package com.lms.modules.attendance;
 import com.lms.infrastructure.messaging.KafkaEventPublisher;
 import com.lms.modules.attendance.dto.*;
 import com.lms.shared.CacheNames;
+import com.lms.shared.OfferingStaff;
 import com.lms.shared.events.AttendanceAlertEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +16,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -29,6 +32,7 @@ public class AttendanceService {
     private final KafkaEventPublisher         kafkaEventPublisher;
     private final AttendanceProperties        properties;
     private final CacheEvictor                cacheEvictor;
+    private final OfferingStaff               offeringStaff;
 
     // ── Sessions ──────────────────────────────────────────────────────────────
 
@@ -78,6 +82,7 @@ public class AttendanceService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Cannot mark attendance on a closed session");
         }
+        requireEnrolledStudents(session.getPscId(), List.of(studentId));
 
         // Upsert
         var record = recordRepository.findBySessionIdAndStudentId(sessionId, studentId)
@@ -107,6 +112,8 @@ public class AttendanceService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Cannot mark attendance on a closed session");
         }
+        requireEnrolledStudents(session.getPscId(),
+                req.records().stream().map(BulkMarkEntry::studentId).toList());
 
         var results = req.records().stream().map(entry -> {
             var record = recordRepository.findBySessionIdAndStudentId(sessionId, entry.studentId())
@@ -151,19 +158,23 @@ public class AttendanceService {
 
     // ── Internal helpers ──────────────────────────────────────────────────────
 
-    /**
-     * Restricts a write to the staff who actually run the offering. Role alone
-     * is not enough: {@code hasRole('TEACHER')} lets any teacher in the
-     * institution open sessions on, and mark attendance for, a course that is
-     * not theirs.
-     */
+    /** Restricts a write to the staff who run the offering. See {@link OfferingStaff}. */
     private void requireOfferingStaff(UUID pscId, UUID userId, boolean isAdmin) {
-        if (isAdmin) {
-            return;
-        }
-        if (!sessionRepository.isStaffOfOffering(pscId, userId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You are not the teacher or an assistant of this course offering");
+        offeringStaff.require(pscId, userId, isAdmin);
+    }
+
+    /**
+     * Attendance is recorded only for students actively enrolled in the
+     * offering. Any user id was accepted before, so a record could be written
+     * for someone outside the class, or for its staff.
+     */
+    private void requireEnrolledStudents(UUID pscId, List<UUID> studentIds) {
+        Set<String> enrolled = new HashSet<>(sessionRepository.findActiveStudentIds(pscId));
+        long outside = studentIds.stream().filter(id -> !enrolled.contains(id.toString())).count();
+        if (outside > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, outside == 1 && studentIds.size() == 1
+                    ? "That user is not an enrolled student of this course offering."
+                    : outside + " of the listed users are not enrolled students of this course offering.");
         }
     }
 

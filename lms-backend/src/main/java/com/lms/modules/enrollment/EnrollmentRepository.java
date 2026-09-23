@@ -22,6 +22,9 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
 
     long countByPscIdAndStatus(UUID pscId, String status);
 
+    /** Counts memberships in one course role, e.g. active STUDENTs for capacity. */
+    long countByPscIdAndStatusAndCourseRole(UUID pscId, String status, String courseRole);
+
     // ── Cross-module native queries (no repository injection needed) ──────────
 
     /**
@@ -31,6 +34,14 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
     @Query(value = "SELECT max_capacity FROM program_semester_courses WHERE id = :pscId",
            nativeQuery = true)
     Optional<Integer> findMaxCapacityByPscId(@Param("pscId") UUID pscId);
+
+    /**
+     * The offering's teacher of record, as text. Used to stop the same person
+     * being added again as a course member.
+     */
+    @Query(value = "SELECT CAST(teacher_id AS text) FROM program_semester_courses WHERE id = :pscId",
+           nativeQuery = true)
+    Optional<String> findTeacherIdByPscId(@Param("pscId") UUID pscId);
 
     /**
      * Enriches an EnrollmentEvent by joining PSC → course → semester → program

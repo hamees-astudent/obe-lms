@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
-import { parseApiError } from '@/lib/apiError';
 import { formatDate, toInputDate } from '@/lib/datetime';
 import { useAuthStore } from '@/store/authStore';
 import Modal from '@/components/ui/Modal';
@@ -148,7 +147,6 @@ function ExamFormModal({ pscId, editing, onClose }: ExamFormModalProps) {
       toast.success(editing ? 'Exam updated' : 'Exam created');
       onClose();
     },
-    onError: (error) => toast.error(parseApiError(error)),
   });
 
   return (
@@ -423,6 +421,7 @@ export default function CourseExamsPage() {
 
   const examsQ = useQuery({
     queryKey: ['offerings', pscId, 'exams'],
+    meta: { errorShownInline: true },
     queryFn: () => api.get<ExamResponse[]>(`/offerings/${pscId}/exams`).then((r) => r.data),
     enabled: !!pscId,
   });
@@ -434,7 +433,6 @@ export default function CourseExamsPage() {
       queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'exams'] });
       toast.success('Exam status updated');
     },
-    onError: (error) => toast.error(parseApiError(error)),
   });
 
   const deleteMutation = useMutation({
@@ -443,7 +441,6 @@ export default function CourseExamsPage() {
       queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'exams'] });
       toast.success('Exam deleted');
     },
-    onError: (error) => toast.error(parseApiError(error)),
   });
 
   if (examsQ.isError) {

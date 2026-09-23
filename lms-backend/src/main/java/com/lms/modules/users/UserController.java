@@ -85,15 +85,17 @@ public class UserController {
     @PatchMapping("/api/admin/users/{id}/role")
     public UserSummaryResponse changeRole(
             @PathVariable UUID id,
-            @Valid @RequestBody ChangeRoleRequest request) {
-        return userService.changeRole(id, request);
+            @Valid @RequestBody ChangeRoleRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return userService.changeRole(id, request, principal.getId());
     }
 
     @PatchMapping("/api/admin/users/{id}/status")
     public UserSummaryResponse changeStatus(
             @PathVariable UUID id,
-            @Valid @RequestBody ChangeStatusRequest request) {
-        return userService.changeStatus(id, request);
+            @Valid @RequestBody ChangeStatusRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return userService.changeStatus(id, request, principal.getId());
     }
 
     // ── Admin: profile management ─────────────────────────────────────────────

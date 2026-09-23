@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { ScanLine, ChevronRight, ArrowRight } from 'lucide-react';
 import api from '@/lib/api';
+import { useManagedOfferings } from '@/lib/queries';
 import QueryError from '@/components/ui/QueryError';
 import Spinner from '@/components/ui/Spinner';
 import { useAuthStore } from '@/store/authStore';
@@ -9,9 +10,6 @@ import { ENROLLMENT_STATUS } from '@/types/api';
 import type {
   EnrollmentResponse,
   OfferingSummaryResponse,
-  ProgramSummaryResponse,
-  SemesterResponse,
-  Page,
   UUID,
 } from '@/types/api';
 
@@ -77,6 +75,7 @@ function EmptyState({ message }: { message: string }) {
 function StudentLanding() {
   const enrollmentsQ = useQuery({
     queryKey: ['me', 'enrollments', 'active'],
+    meta: { errorShownInline: true },
     queryFn: () =>
       api
         .get<EnrollmentResponse[]>(`/me/enrollments?status=${ENROLLMENT_STATUS.ACTIVE}`)
@@ -128,56 +127,17 @@ function StudentLanding() {
 // Teacher / Admin landing
 // ---------------------------------------------------------------------------
 function ManageLanding() {
-  const user = useAuthStore((s) => s.user);
+  const { offerings, isLoading: loading, isError, error, refetch } = useManagedOfferings();
 
-  const programsQ = useQuery({
-    queryKey: ['programs', 'active'],
-    queryFn: () =>
-      api
-        .get<Page<ProgramSummaryResponse>>('/programs?status=ACTIVE&size=100')
-        .then((r) => r.data.content),
-  });
-  const programs = programsQ.data ?? [];
+  const cards: CourseCardData[] = offerings.map((o) => ({
+    pscId: o.id,
+    courseCode: o.courseCode,
+    courseName: o.courseName,
+    semesterName: o.semesterName,
+  }));
 
-  const semesterQueries = useQueries({
-    queries: programs.map((p) => ({
-      queryKey: ['programs', p.id, 'semesters', 'open'],
-      queryFn: () =>
-        api.get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=OPEN`).then((r) => r.data),
-      enabled: programs.length > 0,
-    })),
-  });
-  const allSemesters = semesterQueries.flatMap((q) => q.data ?? []);
-
-  const offeringQueries = useQueries({
-    queries: allSemesters.map((s) => ({
-      queryKey: ['semesters', s.id, 'offerings'],
-      queryFn: () =>
-        api.get<OfferingSummaryResponse[]>(`/semesters/${s.id}/offerings`).then((r) => r.data),
-      enabled: allSemesters.length > 0,
-    })),
-  });
-
-  const loading =
-    programsQ.isLoading ||
-    semesterQueries.some((q) => q.isLoading) ||
-    offeringQueries.some((q) => q.isLoading);
-
-  const semesterMap = new Map<UUID, SemesterResponse>(allSemesters.map((s) => [s.id, s]));
-  const isAdmin = user?.role === 'ADMIN';
-
-  const cards: CourseCardData[] = offeringQueries
-    .flatMap((q, idx) => (q.data ?? []).map((o) => ({ o, semester: allSemesters[idx] })))
-    .filter(({ o }) => isAdmin || o.teacherId === user?.id)
-    .map(({ o, semester }) => ({
-      pscId: o.id,
-      courseCode: o.courseCode,
-      courseName: o.courseName,
-      semesterName: semester?.name ?? semesterMap.get(o.semesterId)?.name,
-    }));
-
-  if (programsQ.isError) {
-    return <QueryError error={programsQ.error} onRetry={() => programsQ.refetch()} />;
+  if (isError) {
+    return <QueryError error={error} onRetry={refetch} />;
   }
 
   return (

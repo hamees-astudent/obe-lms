@@ -71,6 +71,10 @@ export function parseApiError(error: unknown, fallback = 'Something went wrong.'
     }
   }
 
-  if (error instanceof Error && error.message) return error.message;
+  // Anything else is a bug in our own code ("Cannot read properties of
+  // undefined …"), which means nothing to a user. Keep it for developers.
+  if (!axios.isAxiosError(error)) {
+    console.error('Non-HTTP error reported to the user as a fallback:', error);
+  }
   return fallback;
 }

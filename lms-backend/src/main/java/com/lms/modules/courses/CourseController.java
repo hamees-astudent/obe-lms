@@ -2,6 +2,7 @@ package com.lms.modules.courses;
 
 import com.lms.infrastructure.security.UserPrincipal;
 import com.lms.modules.courses.dto.*;
+import com.lms.shared.Role;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -104,23 +105,30 @@ public class CourseController {
     // ═══════════════════════════════════════════════════════════════════════
     // Material → CLO mappings
     // ═══════════════════════════════════════════════════════════════════════
+    // Same roles as creating the material: an assistant who posts a lecture
+    // must be able to say which CLO it covers. Leaving ASSISTANT out answered
+    // every mapping from the editor the UI shows them with a 403.
 
     @PostMapping("/api/materials/{materialId}/clo-mappings")
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
     public MaterialCloMappingResponse addMaterialCloMapping(
             @PathVariable UUID materialId,
-            @Valid @RequestBody CreateMaterialCloMappingRequest req) {
-        return courseService.addMaterialCloMapping(materialId, req);
+            @Valid @RequestBody CreateMaterialCloMappingRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return courseService.addMaterialCloMapping(materialId, req,
+                principal.getId(), isAdmin(principal));
     }
 
     @DeleteMapping("/api/materials/{materialId}/clo-mappings/{cloId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
     public void removeMaterialCloMapping(
             @PathVariable UUID materialId,
-            @PathVariable UUID cloId) {
-        courseService.removeMaterialCloMapping(materialId, cloId);
+            @PathVariable UUID cloId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        courseService.removeMaterialCloMapping(materialId, cloId,
+                principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/materials/{materialId}/clo-mappings")
@@ -190,22 +198,24 @@ public class CourseController {
             @PathVariable UUID pscId,
             @Valid @RequestBody CreateCourseMaterialRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return courseService.createMaterial(pscId, principal.getId(), req);
+        return courseService.createMaterial(pscId, principal.getId(), isAdmin(principal), req);
     }
 
     @PutMapping("/api/materials/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
     public CourseMaterialResponse updateMaterial(
             @PathVariable UUID id,
-            @Valid @RequestBody UpdateCourseMaterialRequest req) {
-        return courseService.updateMaterial(id, req);
+            @Valid @RequestBody UpdateCourseMaterialRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return courseService.updateMaterial(id, req, principal.getId(), isAdmin(principal));
     }
 
     @DeleteMapping("/api/materials/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
-    public void deleteMaterial(@PathVariable UUID id) {
-        courseService.deleteMaterial(id);
+    public void deleteMaterial(@PathVariable UUID id,
+                               @AuthenticationPrincipal UserPrincipal principal) {
+        courseService.deleteMaterial(id, principal.getId(), isAdmin(principal));
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -232,6 +242,18 @@ public class CourseController {
     @GetMapping("/api/clos/{cloId}/plo-mappings")
     public List<CloPloMappingResponse> listCloPloMappings(@PathVariable UUID cloId) {
         return courseService.listCloPloMappings(cloId);
+    }
+
+    /**
+     * Offerings the signed-in user teaches or assists, in open semesters. One
+     * call instead of walking programs → semesters → offerings and filtering
+     * by teacher of record, which missed staff assigned as course members.
+     */
+    @GetMapping("/api/me/teaching-offerings")
+    @PreAuthorize("hasAnyRole('TEACHER','ASSISTANT','ADMIN')")
+    public List<TeachingOfferingResponse> myTeachingOfferings(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return courseService.listTeachingOfferings(principal.getId());
     }
 
     @GetMapping("/api/semesters/{semesterId}/offerings")
@@ -273,5 +295,9 @@ public class CourseController {
     @GetMapping("/api/materials/{id}")
     public CourseMaterialResponse getMaterial(@PathVariable UUID id) {
         return courseService.getMaterial(id);
+    }
+
+    private static boolean isAdmin(UserPrincipal principal) {
+        return principal.getRole() == Role.ADMIN;
     }
 }

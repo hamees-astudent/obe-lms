@@ -4,6 +4,7 @@ import com.lms.infrastructure.messaging.KafkaEventPublisher;
 import com.lms.shared.InstitutionalCodes;
 import com.lms.shared.events.AssessmentEvent;
 import com.lms.modules.courses.dto.*;
+import com.lms.shared.OfferingStaff;
 import com.lms.shared.CacheNames;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,8 +17,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -33,6 +37,8 @@ public class CourseService {
     private final CourseMaterialRepository      materialRepository;
     private final MaterialCloMappingRepository  materialCloMappingRepository;
     private final KafkaEventPublisher           kafkaEventPublisher;
+    /** Course writes by teachers/assistants are limited to offerings they run. */
+    private final OfferingStaff                 offeringStaff;
 
     // ── Course CRUD ───────────────────────────────────────────────────────────
 
@@ -206,6 +212,14 @@ public class CourseService {
     @Transactional
     public OfferingSummaryResponse updateOffering(UUID pscId, UpdateOfferingRequest req) {
         var psc = requirePsc(pscId);
+        // The teacher of record and the course members are separate lists;
+        // one person on both would hold two roles in the same course.
+        if (!req.teacherId().equals(psc.getTeacherId())
+                && pscRepository.isActiveMember(pscId, req.teacherId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "That user is already a course member of this offering. "
+                    + "Remove them from Course Members before making them the teacher.");
+        }
         psc.setTeacherId(req.teacherId());
         psc.setMaxCapacity(req.maxCapacity());
         return toOfferingSummary(pscRepository.save(psc));
@@ -224,6 +238,22 @@ public class CourseService {
         requireCourse(courseId);
         return pscRepository.findAllByCourse_Id(courseId)
                 .stream().map(this::toOfferingSummary).toList();
+    }
+
+    /** Offerings the user teaches or assists in currently open semesters. */
+    public List<TeachingOfferingResponse> listTeachingOfferings(UUID userId) {
+        Map<UUID, TeachingOfferingView> where = pscRepository.findTeachingOfferings(userId).stream()
+                .collect(Collectors.toMap(v -> UUID.fromString(v.getPscId()), v -> v));
+        return pscRepository.findAllById(where.keySet()).stream()
+                .map(p -> {
+                    TeachingOfferingView v = where.get(p.getId());
+                    return new TeachingOfferingResponse(
+                            p.getId(), p.getSemesterId(), v.getSemesterName(), v.getProgramName(),
+                            p.getCourse().getId(), p.getCourse().getCode(), p.getCourse().getName(),
+                            p.getCourse().getCreditHours(), p.getTeacherId());
+                })
+                .sorted(Comparator.comparing(TeachingOfferingResponse::courseCode))
+                .toList();
     }
 
     public List<OfferingSummaryResponse> listOfferingsByTeacher(UUID teacherId) {
@@ -285,9 +315,10 @@ public class CourseService {
 
     @Transactional
     @CacheEvict(value = CacheNames.COURSE_MATERIALS, key = "#pscId")
-    public CourseMaterialResponse createMaterial(UUID pscId, UUID uploadedBy,
+    public CourseMaterialResponse createMaterial(UUID pscId, UUID uploadedBy, boolean isAdmin,
                                                   CreateCourseMaterialRequest req) {
         var psc = requirePsc(pscId);
+        offeringStaff.require(pscId, uploadedBy, isAdmin);
         var material = new CourseMaterial();
         material.setPsc(psc);
         material.setUploadedBy(uploadedBy);
@@ -337,8 +368,10 @@ public class CourseService {
             "QUIZ", "Quiz");
 
     @Transactional
-    public CourseMaterialResponse updateMaterial(UUID id, UpdateCourseMaterialRequest req) {
+    public CourseMaterialResponse updateMaterial(UUID id, UpdateCourseMaterialRequest req,
+                                                  UUID actorId, boolean isAdmin) {
         var material = requireMaterial(id);
+        offeringStaff.require(material.getPsc().getId(), actorId, isAdmin);
         boolean wasVisible = material.isVisible();
         material.setTitle(req.title());
         material.setDescription(req.description());
@@ -358,9 +391,10 @@ public class CourseService {
     }
 
     @Transactional
-    public void deleteMaterial(UUID id) {
+    public void deleteMaterial(UUID id, UUID actorId, boolean isAdmin) {
         var material = requireMaterial(id);
         UUID pscId = material.getPsc().getId();
+        offeringStaff.require(pscId, actorId, isAdmin);
         materialRepository.delete(material);
         evictMaterialCache(pscId);
     }
@@ -391,8 +425,9 @@ public class CourseService {
     // ── Material → CLO mappings ───────────────────────────────────────────────
 
     public MaterialCloMappingResponse addMaterialCloMapping(
-            UUID materialId, CreateMaterialCloMappingRequest req) {
+            UUID materialId, CreateMaterialCloMappingRequest req, UUID actorId, boolean isAdmin) {
         var material = requireMaterial(materialId);
+        offeringStaff.require(material.getPsc().getId(), actorId, isAdmin);
         var clo      = requireCloById(req.cloId());
 
         // The CLO must belong to the course this material is taught in;
@@ -415,7 +450,8 @@ public class CourseService {
         return toMaterialCloResponse(materialCloMappingRepository.save(mapping));
     }
 
-    public void removeMaterialCloMapping(UUID materialId, UUID cloId) {
+    public void removeMaterialCloMapping(UUID materialId, UUID cloId, UUID actorId, boolean isAdmin) {
+        offeringStaff.require(requireMaterial(materialId).getPsc().getId(), actorId, isAdmin);
         var id = new MaterialCloMappingId(materialId, cloId);
         if (!materialCloMappingRepository.existsById(id)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,

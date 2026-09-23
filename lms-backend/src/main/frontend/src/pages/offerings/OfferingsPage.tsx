@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
@@ -14,6 +14,8 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import UserSearchSelect from '@/components/ui/UserSearchSelect';
+import { useUserSummary } from '@/lib/queries';
 import Card from '@/components/ui/Card';
 import type {
   ProgramSummaryResponse,
@@ -57,40 +59,32 @@ const courseRoleBadgeVariant: Record<Role, 'success' | 'warning' | 'info' | 'dan
 
 function EnrollmentPanel({
   offeringId,
+  teacherId,
+  teacherName,
 }: {
   offeringId: UUID;
+  teacherId: UUID;
+  teacherName?: string;
 }) {
   const qc = useQueryClient();
-  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedUser, setSelectedUser] = useState<UserSummaryResponse | null>(null);
   const [selectedCourseRole, setSelectedCourseRole] = useState<Role>('STUDENT');
 
   const { data: enrollments = [], isLoading, isError, error, refetch } = useQuery<EnrollmentResponse[]>({
     queryKey: ['enrollments', offeringId],
+    meta: { errorShownInline: true },
     queryFn: () => api.get(`/offerings/${offeringId}/enrollments`).then((r) => r.data),
   });
-
-  // Fetch all user types inside the panel so each role is always available
-  const { data: teacherPage }    = useQuery<Page<UserSummaryResponse>>({ queryKey: ['users-teachers'],   queryFn: () => api.get('/admin/users', { params: { role: 'TEACHER',   size: 200 } }).then(r => r.data) });
-  const { data: assistantPage }  = useQuery<Page<UserSummaryResponse>>({ queryKey: ['users-assistants'], queryFn: () => api.get('/admin/users', { params: { role: 'ASSISTANT', size: 200 } }).then(r => r.data) });
-  const { data: studentPage }    = useQuery<Page<UserSummaryResponse>>({ queryKey: ['users-students'],   queryFn: () => api.get('/admin/users', { params: { role: 'STUDENT',   size: 500 } }).then(r => r.data) });
-  const { data: adminPage }      = useQuery<Page<UserSummaryResponse>>({ queryKey: ['users-admins'],     queryFn: () => api.get('/admin/users', { params: { role: 'ADMIN',     size: 200 } }).then(r => r.data) });
-
-  const allUsers: UserSummaryResponse[] = [
-    ...(teacherPage?.content   ?? []),
-    ...(assistantPage?.content ?? []),
-    ...(studentPage?.content   ?? []),
-    ...(adminPage?.content     ?? []),
-  ].sort((a, b) => a.name.localeCompare(b.name));
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['enrollments', offeringId] });
 
   const enrollMut = useMutation({
     mutationFn: () => api.post('/admin/enrollments', {
       pscId: offeringId,
-      studentId: selectedUserId,
+      studentId: selectedUser?.id,
       courseRole: selectedCourseRole,
     }),
-    onSuccess: () => { invalidate(); setSelectedUserId(''); setSelectedCourseRole('STUDENT'); },
+    onSuccess: () => { invalidate(); setSelectedUser(null); setSelectedCourseRole('STUDENT'); },
   });
 
   const dropMut = useMutation({
@@ -101,11 +95,14 @@ function EnrollmentPanel({
     },
   });
 
-  // Users not yet actively enrolled
-  const enrolledUserIds = new Set(
-    enrollments.filter((e) => e.status === 'ACTIVE').map((e) => e.studentId),
+  // Shown in the search results but not selectable. The teacher of record
+  // is set on the offering and can't also be a member (the server refuses).
+  const unavailable = new Map<UUID, string>(
+    enrollments
+      .filter((e) => e.status === 'ACTIVE')
+      .map((e) => [e.studentId, 'already a member'] as const),
   );
-  const unenrolledUsers = allUsers.filter((u) => !enrolledUserIds.has(u.id));
+  unavailable.set(teacherId, 'teacher of record — set on the offering');
 
   return (
     <div className="space-y-3">
@@ -113,18 +110,23 @@ function EnrollmentPanel({
         Course Members ({enrollments.filter((e) => e.status === 'ACTIVE').length})
       </h5>
 
+      {/* The teacher assigned on the offering, listed here too so both ways of
+          assigning staff are visible in one place. Changed via "Edit offering". */}
+      <div className="flex items-center justify-between rounded border border-blue-100 bg-blue-50/60 px-3 py-1.5 text-sm">
+        <span className="text-gray-800">{teacherName ?? 'Unknown teacher'}</span>
+        <div className="flex items-center gap-2">
+          <Badge variant="info">TEACHER</Badge>
+          <span className="text-xs text-gray-500">teacher of record · edit offering to change</span>
+        </div>
+      </div>
+
       {/* Add user with role */}
       <div className="flex gap-2 flex-wrap">
-        <select
-          value={selectedUserId}
-          onChange={(e) => setSelectedUserId(e.target.value)}
-          className="flex-1 min-w-[160px] rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-        >
-          <option value="">Select user to add…</option>
-          {unenrolledUsers.map((u) => (
-            <option key={u.id} value={u.id}>{u.name} ({u.email}) [{u.role}]</option>
-          ))}
-        </select>
+        <UserSearchSelect
+          value={selectedUser}
+          onChange={setSelectedUser}
+          disabled={unavailable}
+        />
         <select
           value={selectedCourseRole}
           onChange={(e) => setSelectedCourseRole(e.target.value as Role)}
@@ -136,7 +138,7 @@ function EnrollmentPanel({
         </select>
         <Button
           size="sm"
-          disabled={!selectedUserId}
+          disabled={!selectedUser}
           loading={enrollMut.isPending}
           onClick={() => enrollMut.mutate()}
         >
@@ -153,10 +155,20 @@ function EnrollmentPanel({
       ) : (
         <div className="space-y-1 max-h-40 overflow-y-auto">
           {enrollments.map((e) => {
-            const user = allUsers.find((u) => u.id === e.studentId);
             return (
               <div key={e.id} className="flex items-center justify-between rounded bg-gray-50 px-3 py-1.5 text-sm">
-                <span className="text-gray-800">{user?.name ?? e.studentId}</span>
+                <span className="text-gray-800">
+                  {e.studentName ?? e.studentId}
+                  {e.studentNumber && (
+                    <span className="ml-1.5 font-mono text-xs text-gray-400">{e.studentNumber}</span>
+                  )}
+                  {/* Added before the clash check existed. */}
+                  {e.status === 'ACTIVE' && e.studentId === teacherId && (
+                    <span className="ml-1.5 text-xs text-amber-700">
+                      also the teacher of record — remove this membership
+                    </span>
+                  )}
+                </span>
                 <div className="flex items-center gap-2">
                   {e.courseRole && (
                     <Badge variant={courseRoleBadgeVariant[e.courseRole as Role] ?? 'info'}>
@@ -185,19 +197,43 @@ function EnrollmentPanel({
   );
 }
 
+// ─── Teacher picker ───────────────────────────────────────────────────────────
+
+/**
+ * The offering's teacher of record, chosen by search among teachers and
+ * assistants. Replaces a <select> of the first 200 of each, which left anyone
+ * past that cap unassignable.
+ */
+function TeacherPicker({ value, onChange }: { value?: string; onChange: (id: string) => void }) {
+  const [picked, setPicked] = useState<UserSummaryResponse | null>(null);
+  // Editing an offering starts from an id; fetch the user so it shows by name.
+  const { data: current } = useUserSummary(picked ? null : value || null);
+  const shown = picked ?? (value ? current ?? null : null);
+
+  return (
+    <UserSearchSelect
+      value={shown}
+      roles={['TEACHER', 'ASSISTANT']}
+      placeholder="Search teachers by name or email…"
+      onChange={(u) => {
+        setPicked(u);
+        onChange(u?.id ?? '');
+      }}
+    />
+  );
+}
+
 // ─── Offering row ─────────────────────────────────────────────────────────────
 
 function OfferingRow({
   offering,
-  teachers,
   onEdit,
 }: {
   offering: OfferingSummaryResponse;
-  teachers: UserSummaryResponse[];
   onEdit: (o: OfferingSummaryResponse) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const teacher = teachers.find((t) => t.id === offering.teacherId);
+  const { data: teacher } = useUserSummary(offering.teacherId);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -213,7 +249,7 @@ function OfferingRow({
               <span className="text-xs text-gray-500">{offering.creditHours} credits</span>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
-              Teacher: {teacher?.name ?? 'Unknown'} · Capacity: {offering.maxCapacity}
+              Teacher: {teacher?.name ?? '…'} · Student capacity: {offering.maxCapacity}
             </p>
           </div>
         </div>
@@ -237,7 +273,11 @@ function OfferingRow({
 
       {expanded && (
         <div className="border-t border-gray-100 px-5 py-4">
-          <EnrollmentPanel offeringId={offering.id} />
+          <EnrollmentPanel
+            offeringId={offering.id}
+            teacherId={offering.teacherId}
+            teacherName={teacher?.name}
+          />
         </div>
       )}
     </div>
@@ -272,19 +312,6 @@ export default function OfferingsPage() {
     queryFn: () => api.get(`/semesters/${selectedSemesterId}/offerings`).then((r) => r.data),
     enabled: !!selectedSemesterId,
   });
-
-  const { data: teacherPage } = useQuery<Page<UserSummaryResponse>>({
-    queryKey: ['users-teachers'],
-    queryFn: () => api.get('/admin/users', { params: { role: 'TEACHER', size: 200 } }).then((r) => r.data),
-  });
-  const { data: assistantPage } = useQuery<Page<UserSummaryResponse>>({
-    queryKey: ['users-assistants'],
-    queryFn: () => api.get('/admin/users', { params: { role: 'ASSISTANT', size: 200 } }).then((r) => r.data),
-  });
-  const teachers = [
-    ...(teacherPage?.content ?? []),
-    ...(assistantPage?.content ?? []),
-  ].sort((a, b) => a.name.localeCompare(b.name));
 
   const { data: coursesPage } = useQuery<Page<CourseSummaryResponse>>({
     queryKey: ['courses-all'],
@@ -385,7 +412,6 @@ export default function OfferingsPage() {
             <OfferingRow
               key={o.id}
               offering={o}
-              teachers={teachers}
               onEdit={openEdit}
             />
           ))}
@@ -427,21 +453,17 @@ export default function OfferingsPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Teacher</label>
-            <select
-              {...createForm.register('teacherId')}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <option value="">Select teacher…</option>
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>{t.name} ({t.email})</option>
-              ))}
-            </select>
+            <Controller
+              control={createForm.control}
+              name="teacherId"
+              render={({ field }) => <TeacherPicker value={field.value} onChange={field.onChange} />}
+            />
             {createForm.formState.errors.teacherId && (
               <p className="text-xs text-red-500 mt-1">{createForm.formState.errors.teacherId.message}</p>
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Max Capacity</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Student capacity</label>
             <Input type="number" min={0} {...createForm.register('maxCapacity')} />
             {createForm.formState.errors.maxCapacity && (
               <p className="text-xs text-red-500 mt-1">{createForm.formState.errors.maxCapacity.message}</p>
@@ -459,20 +481,17 @@ export default function OfferingsPage() {
         <form onSubmit={editForm.handleSubmit((d) => editing && updateMut.mutate({ id: editing.id, body: d }))} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Teacher</label>
-            <select
-              {...editForm.register('teacherId')}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>{t.name} ({t.email})</option>
-              ))}
-            </select>
+            <Controller
+              control={editForm.control}
+              name="teacherId"
+              render={({ field }) => <TeacherPicker value={field.value} onChange={field.onChange} />}
+            />
             {editForm.formState.errors.teacherId && (
               <p className="text-xs text-red-500 mt-1">{editForm.formState.errors.teacherId.message}</p>
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Max Capacity</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Student capacity</label>
             <Input type="number" min={0} {...editForm.register('maxCapacity')} />
             {editForm.formState.errors.maxCapacity && (
               <p className="text-xs text-red-500 mt-1">{editForm.formState.errors.maxCapacity.message}</p>

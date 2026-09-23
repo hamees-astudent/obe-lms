@@ -21,6 +21,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { nullIfNotFound } from '@/lib/queries';
 import { toast } from '@/components/ui/Toast';
 import { toApiDateTime, toInputDateTime, formatDateTime } from '@/lib/datetime';
 import { parseApiError } from '@/lib/apiError';
@@ -335,11 +336,19 @@ function SubmitAssignmentModal({ assignment, onClose }: SubmitAssignmentModalPro
     },
   });
 
-  const canSubmit =
-    !lateBlocked &&
-    !uploading &&
-    (!needsText || text.trim().length > 0) &&
-    (!needsFile || !!uploadedFile);
+  // BOTH means "text, a file, or both" — the server and schema accept either.
+  // Requiring each field that is shown made a BOTH assignment unsubmittable
+  // unless the student supplied text *and* a file.
+  const hasText = text.trim().length > 0;
+  const hasFile = !!uploadedFile;
+  const hasRequiredContent =
+    assignment.submissionType === 'TEXT'
+      ? hasText
+      : assignment.submissionType === 'FILE'
+        ? hasFile
+        : hasText || hasFile;
+
+  const canSubmit = !lateBlocked && !uploading && hasRequiredContent;
 
   return (
     <Modal open onClose={onClose} title={`Submit: ${assignment.title}`} maxWidth="max-w-xl">
@@ -455,6 +464,10 @@ function SubmitAssignmentModal({ assignment, onClose }: SubmitAssignmentModalPro
             )}
             {uploadError && <p className="mt-1 text-xs text-red-600">{uploadError}</p>}
           </div>
+        )}
+
+        {assignment.submissionType === 'BOTH' && (
+          <p className="text-xs text-gray-500">Submit an answer, a file, or both.</p>
         )}
 
         {mutation.error != null && (
@@ -680,9 +693,11 @@ function AssignmentCard({
   const mySubmissionQ = useQuery({
     queryKey: ['me', 'assignments', assignment.id, 'submission'],
     queryFn: () =>
-      api
-        .get<AssignmentSubmissionResponse>(`/me/assignments/${assignment.id}/submission`)
-        .then((r) => r.data),
+      nullIfNotFound(
+        api
+          .get<AssignmentSubmissionResponse>(`/me/assignments/${assignment.id}/submission`)
+          .then((r) => r.data),
+      ),
     enabled: !isTeacher,
     retry: false,
   });
@@ -846,7 +861,7 @@ function CloMappingsPanel({
 
   const addMutation = useMutation({
     mutationFn: ({ cloId, weight: w }: { cloId: UUID; weight: number }) =>
-      api.post(`/admin/${assessmentType}/${assessmentId}/clo-mappings`, {
+      api.post(`/${assessmentType}/${assessmentId}/clo-mappings`, {
         cloId,
         weight: w,
       }),
@@ -862,7 +877,7 @@ function CloMappingsPanel({
 
   const removeMutation = useMutation({
     mutationFn: (cloId: UUID) =>
-      api.delete(`/admin/${assessmentType}/${assessmentId}/clo-mappings/${cloId}`),
+      api.delete(`/${assessmentType}/${assessmentId}/clo-mappings/${cloId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: [assessmentType, assessmentId, 'clo-mappings'],
@@ -1139,8 +1154,31 @@ interface QuestionFormModalProps {
   onClose: () => void;
 }
 
+/** Position label shown to the teacher: A, B, C… by row, whatever the stored id. */
+const optionLabel = (idx: number) => String.fromCharCode(65 + idx);
+
+/** The first unused id from a, b, c… so ids stay unique after rows are removed. */
+function nextOptionId(used: string[]): string {
+  for (let i = 0; i < 26; i++) {
+    const id = String.fromCharCode(97 + i);
+    if (!used.includes(id)) return id;
+  }
+  return `o${used.length + 1}`;
+}
+
+/** Correct answers that actually name one of the options. */
+function validCorrectIds(q: Pick<QuizQuestionResponse, 'options' | 'correctAnswer'>): string[] {
+  const ids = new Set(q.options.map((o) => o.id));
+  return (q.correctAnswer ?? []).filter((id) => ids.has(id));
+}
+
 function QuestionFormModal({ quizId, editing, nextOrderIndex, onClose }: QuestionFormModalProps) {
   const queryClient = useQueryClient();
+  // Questions saved by the old builder stored row keys, not option ids, as the
+  // correct answer. Drop those on load and say so, rather than show nothing ticked.
+  const savedCorrect = editing ? validCorrectIds(editing) : [];
+  const hadBrokenAnswer = !!editing && savedCorrect.length === 0;
+
   const { register, handleSubmit, watch, control, setValue, formState: { errors } } =
     useForm<QuestionFormData>({
       resolver: zodResolver(questionSchema),
@@ -1149,7 +1187,7 @@ function QuestionFormModal({ quizId, editing, nextOrderIndex, onClose }: Questio
             questionText: editing.questionText,
             type: editing.type,
             options: editing.options,
-            correctAnswer: editing.correctAnswer ?? [],
+            correctAnswer: savedCorrect,
             marks: editing.marks,
             orderIndex: editing.orderIndex,
             explanation: editing.explanation ?? '',
@@ -1161,23 +1199,42 @@ function QuestionFormModal({ quizId, editing, nextOrderIndex, onClose }: Questio
               { id: 'b', text: '' },
             ],
             correctAnswer: [],
+            marks: 1,
             orderIndex: nextOrderIndex,
           },
     });
 
+  // `fields[i].id` is react-hook-form's own row key, not the option's id —
+  // useFieldArray overwrites `id`. The old builder used it as the option id,
+  // so the "correct" buttons showed random strings and saved answers that
+  // matched no option. Option ids are read from the form values instead.
   const { fields, append, remove } = useFieldArray({ control, name: 'options' });
+  const options = watch('options') ?? [];
   const qType = watch('type');
-  const correctAnswer = watch('correctAnswer');
+  const correctAnswer = watch('correctAnswer') ?? [];
+
+  // Switching to single-answer keeps only the first answer ticked.
+  useEffect(() => {
+    if (qType === 'MCQ' && correctAnswer.length > 1) {
+      setValue('correctAnswer', [correctAnswer[0]], { shouldValidate: true });
+    }
+  }, [qType, correctAnswer, setValue]);
 
   function toggleCorrect(optId: string) {
-    if (qType === 'MCQ') {
-      setValue('correctAnswer', [optId]);
-    } else {
-      const cur = correctAnswer ?? [];
-      setValue(
-        'correctAnswer',
-        cur.includes(optId) ? cur.filter((x) => x !== optId) : [...cur, optId],
-      );
+    const next =
+      qType === 'MCQ'
+        ? [optId]
+        : correctAnswer.includes(optId)
+          ? correctAnswer.filter((x) => x !== optId)
+          : [...correctAnswer, optId];
+    setValue('correctAnswer', next, { shouldValidate: true });
+  }
+
+  function removeOption(idx: number) {
+    const id = options[idx]?.id;
+    remove(idx);
+    if (id && correctAnswer.includes(id)) {
+      setValue('correctAnswer', correctAnswer.filter((x) => x !== id), { shouldValidate: true });
     }
   }
 
@@ -1211,6 +1268,16 @@ function QuestionFormModal({ quizId, editing, nextOrderIndex, onClose }: Questio
       maxWidth="max-w-xl"
     >
       <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
+        {hadBrokenAnswer && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+            <span>
+              This question&apos;s saved correct answer didn&apos;t match any option, so no student
+              could score on it. Mark the correct answer again and save.
+            </span>
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Question</label>
           <textarea
@@ -1223,72 +1290,92 @@ function QuestionFormModal({ quizId, editing, nextOrderIndex, onClose }: Questio
           )}
         </div>
 
-        <div className="flex items-center gap-4 text-sm">
-          <label className="font-medium text-gray-700">Type:</label>
+        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <legend className="sr-only">Question type</legend>
+          <span className="font-medium text-gray-700">Type:</span>
           <label className="flex items-center gap-1.5">
             <input type="radio" value="MCQ" {...register('type')} />
-            Multiple Choice (1 answer)
+            Single answer
           </label>
           <label className="flex items-center gap-1.5">
             <input type="radio" value="MSQ" {...register('type')} />
-            Multi-Select (many answers)
+            Multiple answers
           </label>
-        </div>
+        </fieldset>
 
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700">
+            <span className="text-sm font-medium text-gray-700">
               Options{' '}
-              <span className="text-xs font-normal text-gray-400">
-                (click option ID to mark as correct)
+              <span className="text-xs font-normal text-gray-500">
+                {qType === 'MCQ'
+                  ? '— select the one correct answer'
+                  : '— tick every correct answer'}
               </span>
-            </label>
+            </span>
             <button
               type="button"
-              onClick={() => append({ id: String.fromCharCode(97 + fields.length), text: '' })}
-              className="text-xs font-medium text-primary-600 hover:text-primary-800"
+              onClick={() => append({ id: nextOptionId(options.map((o) => o.id)), text: '' })}
+              disabled={fields.length >= 26}
+              className="text-xs font-medium text-primary-600 hover:text-primary-800 disabled:text-gray-300"
             >
               + Add option
             </button>
           </div>
-          {errors.options && (
-            <p className="mb-1 text-xs text-red-600">{errors.options.message as string}</p>
+          {errors.options?.message && (
+            <p className="mb-1 text-xs text-red-600">{errors.options.message}</p>
           )}
           {fields.map((field, idx) => {
-            const isCorrect = (correctAnswer ?? []).includes(field.id);
+            const optId = options[idx]?.id ?? '';
+            const isCorrect = correctAnswer.includes(optId);
+            const textError = errors.options?.[idx]?.text?.message;
             return (
-              <div key={field.id} className="mb-2 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => toggleCorrect(field.id)}
-                  className={`h-7 w-7 flex-shrink-0 rounded-full border-2 text-xs font-bold transition-colors ${
-                    isCorrect
-                      ? 'border-green-500 bg-green-500 text-white'
-                      : 'border-gray-300 text-gray-400 hover:border-green-400'
+              <div key={field.id} className="mb-2">
+                <div
+                  className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${
+                    isCorrect ? 'border-green-300 bg-green-50' : 'border-transparent'
                   }`}
                 >
-                  {field.id.toUpperCase()}
-                </button>
-                <Controller
-                  name={`options.${idx}.text`}
-                  control={control}
-                  render={({ field: f }) => (
+                  <span className="w-5 flex-shrink-0 text-center text-xs font-semibold text-gray-500">
+                    {optionLabel(idx)}
+                  </span>
+                  <Controller
+                    name={`options.${idx}.text`}
+                    control={control}
+                    render={({ field: f }) => (
+                      <input
+                        {...f}
+                        aria-label={`Option ${optionLabel(idx)}`}
+                        aria-invalid={!!textError}
+                        placeholder={`Option ${optionLabel(idx)}`}
+                        className={`min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm focus:border-primary-500 focus:outline-none ${
+                          textError ? 'border-red-400' : 'border-gray-300'
+                        }`}
+                      />
+                    )}
+                  />
+                  <label className="flex flex-shrink-0 cursor-pointer items-center gap-1 text-xs font-medium text-gray-600">
                     <input
-                      {...f}
-                      placeholder={`Option ${field.id.toUpperCase()}`}
-                      className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                      type={qType === 'MCQ' ? 'radio' : 'checkbox'}
+                      name="correct-answer"
+                      checked={isCorrect}
+                      onChange={() => toggleCorrect(optId)}
+                      className="h-4 w-4 accent-green-600"
                     />
+                    Correct
+                  </label>
+                  {fields.length > 2 && (
+                    <button
+                      type="button"
+                      onClick={() => removeOption(idx)}
+                      aria-label={`Remove option ${optionLabel(idx)}`}
+                      className="flex-shrink-0 p-1 text-gray-400 hover:text-red-500"
+                    >
+                      <X size={14} />
+                    </button>
                   )}
-                />
-                {fields.length > 2 && (
-                  <button
-                    type="button"
-                    onClick={() => remove(idx)}
-                    className="text-gray-400 hover:text-red-500"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
+                </div>
+                {textError && <p className="ml-9 mt-0.5 text-xs text-red-600">{textError}</p>}
               </div>
             );
           })}
@@ -1400,9 +1487,22 @@ function QuestionsPanel({ quiz }: { quiz: QuizResponse }) {
                   <Badge variant={q.type === 'MCQ' ? 'info' : 'warning'}>{q.type}</Badge>
                   <span className="text-xs text-gray-400">{q.marks} marks</span>
                   <span className="text-xs text-gray-300">·</span>
-                  <span className="text-xs text-green-600">
-                    Correct: {q.correctAnswer?.join(', ')}
-                  </span>
+                  {validCorrectIds(q).length > 0 ? (
+                    <span className="text-xs text-green-600">
+                      Correct:{' '}
+                      {q.options
+                        .map((o, i) => ({ o, label: optionLabel(i) }))
+                        .filter(({ o }) => validCorrectIds(q).includes(o.id))
+                        .map(({ o, label }) => `${label} (${o.text})`)
+                        .join(', ')}
+                    </span>
+                  ) : (
+                    // Saved by the old builder, whose answer named no option.
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700">
+                      <AlertTriangle size={12} />
+                      No valid correct answer: students can't score on this. Edit to fix.
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="ml-2 flex flex-shrink-0 items-center gap-1">
@@ -1453,11 +1553,14 @@ interface QuizPlayerProps {
 function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
   const queryClient = useQueryClient();
   const [answers, setAnswers] = useState<Record<string, string[]>>(submission.answers ?? {});
-  const [timeLeft, setTimeLeft] = useState<number | null>(() => {
-    if (!quiz.durationMinutes) return null;
-    const elapsed = (Date.now() - new Date(submission.startedAt).getTime()) / 1000;
-    return Math.max(0, quiz.durationMinutes * 60 - elapsed);
-  });
+  // The deadline is the server's time left, counted from when this attempt
+  // was loaded. Deriving it from `startedAt` compared a zone-less server
+  // timestamp against the browser clock: any timezone or clock difference
+  // made a fresh attempt look expired and auto-submitted it empty.
+  const [deadline] = useState<number | null>(() =>
+    submission.remainingSeconds == null ? null : Date.now() + submission.remainingSeconds * 1000,
+  );
+  const [timeLeft, setTimeLeft] = useState<number | null>(submission.remainingSeconds ?? null);
 
   const questionsQ = useQuery({
     queryKey: ['quizzes', quiz.id, 'questions'],
@@ -1473,19 +1576,23 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
           answers: payload,
         })
         .then((r) => r.data),
+    // Keep the cached attempt current, or "Continue" reopens it with the
+    // answers it had when it started.
+    onSuccess: (data) => {
+      queryClient.setQueryData(['me', 'quizzes', quiz.id, 'submission'], data);
+    },
   });
 
   const submitMutation = useMutation({
-    // The answers live in component state, so they must reach the server
-    // *before* the submit call grades the attempt — submitting on its own
-    // grades whatever was last persisted, which for most students is nothing.
-    mutationFn: async (payload: Record<string, string[]>) => {
-      await saveMutation.mutateAsync(payload);
-      const res = await api.post<QuizSubmissionResponse>(
-        `/quiz-submissions/${submission.id}/submit`,
-      );
-      return res.data;
-    },
+    // The answers go with the submit call itself. As a save followed by a
+    // submit, a timer auto-submit reached the save after the deadline, was
+    // refused, and never submitted at all.
+    mutationFn: (payload: Record<string, string[]>) =>
+      api
+        .post<QuizSubmissionResponse>(`/quiz-submissions/${submission.id}/submit`, {
+          answers: payload,
+        })
+        .then((r) => r.data),
     onSuccess: (data) => {
       queryClient.setQueryData(['me', 'quizzes', quiz.id, 'submission'], data);
       queryClient.invalidateQueries({ queryKey: ['quizzes', quiz.id, 'submissions'] });
@@ -1500,9 +1607,7 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
 
   // Timer countdown — one interval for the lifetime of the attempt.
   useEffect(() => {
-    if (!quiz.durationMinutes) return;
-    const deadline =
-      new Date(submission.startedAt).getTime() + quiz.durationMinutes * 60_000;
+    if (deadline == null) return;
 
     const tick = () => {
       const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
@@ -1517,7 +1622,7 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quiz.durationMinutes, submission.startedAt]);
+  }, [deadline]);
 
   function toggleAnswer(questionId: UUID, optId: string, type: 'MCQ' | 'MSQ') {
     setAnswers((prev) => {
@@ -1682,9 +1787,11 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
   const mySubmissionQ = useQuery({
     queryKey: ['me', 'quizzes', quiz.id, 'submission'],
     queryFn: () =>
-      api
-        .get<QuizSubmissionResponse>(`/me/quizzes/${quiz.id}/submission`)
-        .then((r) => r.data),
+      nullIfNotFound(
+        api
+          .get<QuizSubmissionResponse>(`/me/quizzes/${quiz.id}/submission`)
+          .then((r) => r.data),
+      ),
     enabled: !isTeacher,
     retry: false,
   });
@@ -1812,7 +1919,13 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
                   )}
                 </div>
               ) : inProgress ? (
-                <Button size="sm" onClick={() => setShowPlayer(true)}>
+                // Through /start, which returns the attempt as saved with its
+                // current time left, rather than the cached copy.
+                <Button
+                  size="sm"
+                  loading={startMutation.isPending}
+                  onClick={() => startMutation.mutate()}
+                >
                   Continue
                 </Button>
               ) : !hasQuestions ? (

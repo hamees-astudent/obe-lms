@@ -7,6 +7,7 @@ import {
 } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import AppLayout from '@/components/layout/AppLayout';
+import RouteError from '@/components/RouteError';
 import Spinner from '@/components/ui/Spinner';
 import type { Role } from '@/types/api';
 
@@ -73,6 +74,7 @@ function LazyPage({ children }: { children: React.ReactNode }) {
 const router = createBrowserRouter([
   {
     path: '/login',
+    errorElement: <RouteError />,
     element: (
       <LazyPage>
         <LoginPage />
@@ -81,6 +83,7 @@ const router = createBrowserRouter([
   },
   {
     path: '/forgot-password',
+    errorElement: <RouteError />,
     element: (
       <LazyPage>
         <ForgotPasswordPage />
@@ -89,6 +92,7 @@ const router = createBrowserRouter([
   },
   {
     path: '/reset-password',
+    errorElement: <RouteError />,
     element: (
       <LazyPage>
         <ResetPasswordPage />
@@ -97,152 +101,159 @@ const router = createBrowserRouter([
   },
   {
     element: <RequireAuth />,
+    errorElement: <RouteError />,
     children: [
       {
         element: <AppLayout />,
         children: [
-          { index: true, element: <Navigate to="/dashboard" replace /> },
           {
-            path: 'dashboard',
-            element: (
-              <LazyPage>
-                <DashboardPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'courses',
-            element: (
-              <LazyPage>
-                <CoursesPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'courses/:pscId',
-            element: (
-              <LazyPage>
-                <CourseDetailPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'attendance',
-            element: (
-              <LazyPage>
-                <AttendancePage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'attendance/:pscId',
-            element: (
-              <LazyPage>
-                <CourseAttendancePage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'assessment',
-            element: (
-              <LazyPage>
-                <AssessmentPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'assessment/:pscId',
-            element: (
-              <LazyPage>
-                <CourseAssessmentPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'exams',
-            element: (
-              <LazyPage>
-                <ExamsPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'exams/:pscId',
-            element: (
-              <LazyPage>
-                <CourseExamsPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'exams/:pscId/:examId',
-            element: (
-              <LazyPage>
-                <ExamMarksPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'transcripts',
-            element: (
-              <LazyPage>
-                <TranscriptsPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: 'notifications',
-            element: (
-              <LazyPage>
-                <NotificationsPage />
-              </LazyPage>
-            ),
-          },
-          // Admin-only
-          {
-            element: (
-              <RequireRole roles={['ADMIN']} />
-            ),
+            // Inside the layout, so a crashed page keeps the sidebar and header.
+            errorElement: <RouteError />,
             children: [
+              { index: true, element: <Navigate to="/dashboard" replace /> },
               {
-                path: 'users',
+                path: 'dashboard',
                 element: (
                   <LazyPage>
-                    <UsersPage />
+                    <DashboardPage />
                   </LazyPage>
                 ),
               },
               {
-                path: 'programs',
+                path: 'courses',
                 element: (
                   <LazyPage>
-                    <ProgramsPage />
+                    <CoursesPage />
                   </LazyPage>
                 ),
               },
               {
-                path: 'offerings',
+                path: 'courses/:pscId',
                 element: (
                   <LazyPage>
-                    <OfferingsPage />
+                    <CourseDetailPage />
                   </LazyPage>
                 ),
               },
               {
-                path: 'grading-scales',
+                path: 'attendance',
                 element: (
                   <LazyPage>
-                    <GradingScalesPage />
+                    <AttendancePage />
                   </LazyPage>
                 ),
               },
               {
-                path: 'course-catalog',
+                path: 'attendance/:pscId',
                 element: (
                   <LazyPage>
-                    <CoursesCatalogPage />
+                    <CourseAttendancePage />
                   </LazyPage>
                 ),
+              },
+              {
+                path: 'assessment',
+                element: (
+                  <LazyPage>
+                    <AssessmentPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'assessment/:pscId',
+                element: (
+                  <LazyPage>
+                    <CourseAssessmentPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'exams',
+                element: (
+                  <LazyPage>
+                    <ExamsPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'exams/:pscId',
+                element: (
+                  <LazyPage>
+                    <CourseExamsPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'exams/:pscId/:examId',
+                element: (
+                  <LazyPage>
+                    <ExamMarksPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'transcripts',
+                element: (
+                  <LazyPage>
+                    <TranscriptsPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'notifications',
+                element: (
+                  <LazyPage>
+                    <NotificationsPage />
+                  </LazyPage>
+                ),
+              },
+              // Admin-only
+              {
+                element: (
+                  <RequireRole roles={['ADMIN']} />
+                ),
+                children: [
+                  {
+                    path: 'users',
+                    element: (
+                      <LazyPage>
+                        <UsersPage />
+                      </LazyPage>
+                    ),
+                  },
+                  {
+                    path: 'programs',
+                    element: (
+                      <LazyPage>
+                        <ProgramsPage />
+                      </LazyPage>
+                    ),
+                  },
+                  {
+                    path: 'offerings',
+                    element: (
+                      <LazyPage>
+                        <OfferingsPage />
+                      </LazyPage>
+                    ),
+                  },
+                  {
+                    path: 'grading-scales',
+                    element: (
+                      <LazyPage>
+                        <GradingScalesPage />
+                      </LazyPage>
+                    ),
+                  },
+                  {
+                    path: 'course-catalog',
+                    element: (
+                      <LazyPage>
+                        <CoursesCatalogPage />
+                      </LazyPage>
+                    ),
+                  },
+                ],
               },
             ],
           },
@@ -252,6 +263,7 @@ const router = createBrowserRouter([
   },
   {
     path: '*',
+    errorElement: <RouteError />,
     element: (
       <LazyPage>
         <NotFoundPage />

@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus, Edit2, ShieldCheck, UserX, UserCheck, Search } from 'lucide-react';
 import api from '@/lib/api';
+import { useAuthStore } from '@/store/authStore';
 import { parseApiError } from '@/lib/apiError';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -59,6 +60,9 @@ function statusBadge(status: string) {
 
 export default function UsersPage() {
   const qc = useQueryClient();
+  // The server refuses changes to your own role or status (an admin could
+  // otherwise lock themselves out); the UI says so up front.
+  const myId = useAuthStore((s) => s.user?.id);
 
   // ── filters / pagination ──────────────────────────────────────────────────
   const [search,    setSearch]    = useState('');
@@ -221,6 +225,7 @@ export default function UsersPage() {
                 <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
                     <span className="font-medium text-gray-900">{u.name}</span>
+                    {u.id === myId && <span className="ml-1.5 text-xs text-gray-400">(you)</span>}
                     {/* Both identifiers a student is looked up by. The UUID is
                         stored but was never shown anywhere, which left the
                         transcript search with nothing to paste. */}
@@ -245,16 +250,22 @@ export default function UsersPage() {
                         <Edit2 size={15} />
                       </button>
                       <button
-                        title="Change role"
+                        title={u.id === myId ? 'You cannot change your own role' : 'Change role'}
                         onClick={() => openChangeRole(u)}
-                        className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition"
+                        disabled={u.id === myId}
+                        className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
                       >
                         <ShieldCheck size={15} />
                       </button>
                       <button
-                        title={u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                        title={
+                          u.id === myId
+                            ? 'You cannot deactivate your own account'
+                            : u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'
+                        }
                         onClick={() => toggleStatusMut.mutate(u)}
-                        className={`rounded p-2 transition hover:bg-gray-100 ${
+                        disabled={u.id === myId}
+                        className={`rounded p-2 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent ${
                           u.status === 'ACTIVE' ? 'text-red-400 hover:text-red-600' : 'text-green-400 hover:text-green-600'
                         }`}
                       >

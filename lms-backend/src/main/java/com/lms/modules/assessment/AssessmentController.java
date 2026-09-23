@@ -2,6 +2,7 @@ package com.lms.modules.assessment;
 
 import com.lms.infrastructure.security.UserPrincipal;
 import com.lms.modules.assessment.dto.*;
+import com.lms.shared.Role;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -28,7 +29,7 @@ public class AssessmentController {
             @RequestBody @Valid CreateAssignmentRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
         req.setPscId(pscId);
-        return assessmentService.createAssignment(principal.getId(), req);
+        return assessmentService.createAssignment(principal.getId(), isAdmin(principal), req);
     }
 
     @GetMapping("/api/offerings/{pscId}/assignments")
@@ -47,15 +48,17 @@ public class AssessmentController {
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
     public AssignmentResponse updateAssignment(
             @PathVariable UUID id,
-            @RequestBody @Valid UpdateAssignmentRequest req) {
-        return assessmentService.updateAssignment(id, req);
+            @RequestBody @Valid UpdateAssignmentRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.updateAssignment(id, req, principal.getId(), isAdmin(principal));
     }
 
     @DeleteMapping("/api/assignments/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
-    public void deleteAssignment(@PathVariable UUID id) {
-        assessmentService.deleteAssignment(id);
+    public void deleteAssignment(@PathVariable UUID id,
+                                 @AuthenticationPrincipal UserPrincipal principal) {
+        assessmentService.deleteAssignment(id, principal.getId(), isAdmin(principal));
     }
 
     // ── Assignment Submissions ────────────────────────────────────────────────
@@ -76,19 +79,23 @@ public class AssessmentController {
             @PathVariable UUID submissionId,
             @RequestBody @Valid GradeSubmissionRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return assessmentService.gradeSubmission(submissionId, principal.getId(), req);
+        return assessmentService.gradeSubmission(submissionId, principal.getId(), isAdmin(principal), req);
     }
 
     @GetMapping("/api/assignments/{id}/submissions")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
-    public List<AssignmentSubmissionResponse> listSubmissions(@PathVariable UUID id) {
-        return assessmentService.listSubmissions(id);
+    public List<AssignmentSubmissionResponse> listSubmissions(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.listSubmissions(id, principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/submissions/assignments/{submissionId}")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
-    public AssignmentSubmissionResponse getSubmission(@PathVariable UUID submissionId) {
-        return assessmentService.getSubmission(submissionId);
+    public AssignmentSubmissionResponse getSubmission(
+            @PathVariable UUID submissionId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.getSubmission(submissionId, principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/me/assignments/{id}/submission")
@@ -109,7 +116,7 @@ public class AssessmentController {
             @RequestBody @Valid CreateQuizRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
         req.setPscId(pscId);
-        return assessmentService.createQuiz(principal.getId(), req);
+        return assessmentService.createQuiz(principal.getId(), isAdmin(principal), req);
     }
 
     @GetMapping("/api/offerings/{pscId}/quizzes")
@@ -128,15 +135,17 @@ public class AssessmentController {
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
     public QuizResponse updateQuiz(
             @PathVariable UUID id,
-            @RequestBody @Valid UpdateQuizRequest req) {
-        return assessmentService.updateQuiz(id, req);
+            @RequestBody @Valid UpdateQuizRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.updateQuiz(id, req, principal.getId(), isAdmin(principal));
     }
 
     @DeleteMapping("/api/quizzes/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
-    public void deleteQuiz(@PathVariable UUID id) {
-        assessmentService.deleteQuiz(id);
+    public void deleteQuiz(@PathVariable UUID id,
+                           @AuthenticationPrincipal UserPrincipal principal) {
+        assessmentService.deleteQuiz(id, principal.getId(), isAdmin(principal));
     }
 
     // ── Quiz Questions ────────────────────────────────────────────────────────
@@ -146,8 +155,9 @@ public class AssessmentController {
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
     public QuizQuestionResponse addQuestion(
             @PathVariable UUID id,
-            @RequestBody @Valid CreateQuizQuestionRequest req) {
-        return assessmentService.addQuestion(id, req);
+            @RequestBody @Valid CreateQuizQuestionRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.addQuestion(id, req, principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/quizzes/{id}/questions")
@@ -155,24 +165,26 @@ public class AssessmentController {
     public List<QuizQuestionResponse> listQuestions(
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal) {
-        boolean isStaff = principal.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().matches("ROLE_ADMIN|ROLE_TEACHER|ROLE_ASSISTANT"));
-        return assessmentService.listQuestions(id, isStaff);
+        boolean hasStaffRole = principal.getRole() == Role.TEACHER
+                || principal.getRole() == Role.ASSISTANT;
+        return assessmentService.listQuestions(id, principal.getId(), isAdmin(principal), hasStaffRole);
     }
 
     @PutMapping("/api/quiz-questions/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
     public QuizQuestionResponse updateQuestion(
             @PathVariable UUID id,
-            @RequestBody @Valid UpdateQuizQuestionRequest req) {
-        return assessmentService.updateQuestion(id, req);
+            @RequestBody @Valid UpdateQuizQuestionRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.updateQuestion(id, req, principal.getId(), isAdmin(principal));
     }
 
     @DeleteMapping("/api/quiz-questions/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
-    public void deleteQuestion(@PathVariable UUID id) {
-        assessmentService.deleteQuestion(id);
+    public void deleteQuestion(@PathVariable UUID id,
+                               @AuthenticationPrincipal UserPrincipal principal) {
+        assessmentService.deleteQuestion(id, principal.getId(), isAdmin(principal));
     }
 
     // ── Quiz Submissions ──────────────────────────────────────────────────────
@@ -199,20 +211,26 @@ public class AssessmentController {
     @PreAuthorize("hasRole('STUDENT')")
     public QuizSubmissionResponse submitQuiz(
             @PathVariable UUID id,
+            @RequestBody(required = false) @Valid SubmitQuizAnswersRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return assessmentService.submitQuiz(id, principal.getId());
+        return assessmentService.submitQuiz(id, principal.getId(),
+                req == null ? null : req.getAnswers());
     }
 
     @GetMapping("/api/quizzes/{id}/submissions")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
-    public List<QuizSubmissionResponse> listQuizSubmissions(@PathVariable UUID id) {
-        return assessmentService.listQuizSubmissions(id);
+    public List<QuizSubmissionResponse> listQuizSubmissions(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.listQuizSubmissions(id, principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/quiz-submissions/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
-    public QuizSubmissionResponse getQuizSubmission(@PathVariable UUID id) {
-        return assessmentService.getQuizSubmission(id);
+    public QuizSubmissionResponse getQuizSubmission(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.getQuizSubmission(id, principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/me/quizzes/{id}/submission")
@@ -225,20 +243,24 @@ public class AssessmentController {
 
     // ── CLO Mappings: Assignments ─────────────────────────────────────────────
 
-    @PostMapping("/api/admin/assignments/{id}/clo-mappings")
+    // Not under /api/admin/**: the security filter makes that prefix admin-only,
+    // so teachers were refused before @PreAuthorize was even consulted.
+    @PostMapping("/api/assignments/{id}/clo-mappings")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public CloMappingResponse addAssignmentCloMapping(
             @PathVariable UUID id,
-            @RequestBody @Valid CloMappingRequest req) {
-        return assessmentService.addAssignmentCloMapping(id, req);
+            @RequestBody @Valid CloMappingRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.addAssignmentCloMapping(id, req, principal.getId(), isAdmin(principal));
     }
 
-    @DeleteMapping("/api/admin/assignments/{id}/clo-mappings/{cloId}")
+    @DeleteMapping("/api/assignments/{id}/clo-mappings/{cloId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
-    public void removeAssignmentCloMapping(@PathVariable UUID id, @PathVariable UUID cloId) {
-        assessmentService.removeAssignmentCloMapping(id, cloId);
+    public void removeAssignmentCloMapping(@PathVariable UUID id, @PathVariable UUID cloId,
+                                           @AuthenticationPrincipal UserPrincipal principal) {
+        assessmentService.removeAssignmentCloMapping(id, cloId, principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/assignments/{id}/clo-mappings")
@@ -249,25 +271,31 @@ public class AssessmentController {
 
     // ── CLO Mappings: Quizzes ─────────────────────────────────────────────────
 
-    @PostMapping("/api/admin/quizzes/{id}/clo-mappings")
+    @PostMapping("/api/quizzes/{id}/clo-mappings")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public CloMappingResponse addQuizCloMapping(
             @PathVariable UUID id,
-            @RequestBody @Valid CloMappingRequest req) {
-        return assessmentService.addQuizCloMapping(id, req);
+            @RequestBody @Valid CloMappingRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.addQuizCloMapping(id, req, principal.getId(), isAdmin(principal));
     }
 
-    @DeleteMapping("/api/admin/quizzes/{id}/clo-mappings/{cloId}")
+    @DeleteMapping("/api/quizzes/{id}/clo-mappings/{cloId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
-    public void removeQuizCloMapping(@PathVariable UUID id, @PathVariable UUID cloId) {
-        assessmentService.removeQuizCloMapping(id, cloId);
+    public void removeQuizCloMapping(@PathVariable UUID id, @PathVariable UUID cloId,
+                                     @AuthenticationPrincipal UserPrincipal principal) {
+        assessmentService.removeQuizCloMapping(id, cloId, principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/quizzes/{id}/clo-mappings")
     @PreAuthorize("isAuthenticated()")
     public List<CloMappingResponse> listQuizCloMappings(@PathVariable UUID id) {
         return assessmentService.listQuizCloMappings(id);
+    }
+
+    private static boolean isAdmin(UserPrincipal principal) {
+        return principal.getRole() == Role.ADMIN;
     }
 }

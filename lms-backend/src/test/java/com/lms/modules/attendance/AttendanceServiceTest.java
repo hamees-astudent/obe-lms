@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import com.lms.infrastructure.cache.CacheEvictor;
+import com.lms.shared.OfferingStaff;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -27,9 +28,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.when;
 
 /**
@@ -45,6 +48,7 @@ class AttendanceServiceTest {
     @Mock  private AttendanceRecordRepository  recordRepository;
     @Mock  private KafkaEventPublisher         kafkaEventPublisher;
     @Mock  private CacheEvictor               cacheEvictor;
+    @Mock  private OfferingStaff              offeringStaff;
 
     private final AttendanceProperties properties = new AttendanceProperties();
 
@@ -54,13 +58,18 @@ class AttendanceServiceTest {
     private final UUID pscId     = UUID.randomUUID();
     private final UUID studentId = UUID.randomUUID();
     private final UUID teacherId = UUID.randomUUID();
+    private static final UUID OTHER_STUDENT = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         service = new AttendanceService(sessionRepository, recordRepository,
-                kafkaEventPublisher, properties, cacheEvictor);
+                kafkaEventPublisher, properties, cacheEvictor, offeringStaff);
 
-        when(sessionRepository.isStaffOfOffering(any(), any())).thenReturn(true);
+        // Real admin/403 logic; only the database lookup is stubbed.
+        doCallRealMethod().when(offeringStaff).require(any(), any(), anyBoolean());
+        when(offeringStaff.isStaff(any(), any())).thenReturn(true);
+        when(sessionRepository.findActiveStudentIds(any()))
+                .thenReturn(List.of(studentId.toString(), OTHER_STUDENT.toString()));
         when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(openSession()));
         when(recordRepository.findBySessionIdAndStudentId(any(), any())).thenReturn(Optional.empty());
         when(recordRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -81,7 +90,7 @@ class AttendanceServiceTest {
     @Test
     @DisplayName("bulk marking evicts the cached summary of every student touched")
     void bulkMarkEvictsEverySummary() {
-        UUID otherStudent = UUID.randomUUID();
+        UUID otherStudent = OTHER_STUDENT;
         service.bulkMark(sessionId,
                 new BulkMarkRequest(List.of(
                         new BulkMarkEntry(studentId, "PRESENT", null),
@@ -120,7 +129,7 @@ class AttendanceServiceTest {
     @Test
     @DisplayName("a teacher who does not run the offering cannot open a session")
     void nonStaffCannotCreateSession() {
-        when(sessionRepository.isStaffOfOffering(eq(pscId), eq(teacherId))).thenReturn(false);
+        when(offeringStaff.isStaff(eq(pscId), eq(teacherId))).thenReturn(false);
 
         assertThatThrownBy(() -> service.createSession(teacherId, false,
                 new CreateSessionRequest(pscId, LocalDate.now(), "Week 1")))
@@ -132,7 +141,7 @@ class AttendanceServiceTest {
     @Test
     @DisplayName("a teacher who does not run the offering cannot mark attendance")
     void nonStaffCannotMark() {
-        when(sessionRepository.isStaffOfOffering(any(), any())).thenReturn(false);
+        when(offeringStaff.isStaff(any(), any())).thenReturn(false);
 
         assertThatThrownBy(() -> service.markRecord(sessionId, studentId,
                 new MarkAttendanceRequest("PRESENT", null), teacherId, false))
@@ -142,12 +151,36 @@ class AttendanceServiceTest {
     @Test
     @DisplayName("an admin may mark attendance on any offering")
     void adminBypassesOwnership() {
-        when(sessionRepository.isStaffOfOffering(any(), any())).thenReturn(false);
+        when(offeringStaff.isStaff(any(), any())).thenReturn(false);
 
         var response = service.markRecord(sessionId, studentId,
                 new MarkAttendanceRequest("PRESENT", null), teacherId, true);
 
         assertThat(response.status()).isEqualTo("PRESENT");
+    }
+
+    // ── Only enrolled students ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("attendance cannot be marked for someone not enrolled as a student")
+    void cannotMarkOutsider() {
+        assertThatThrownBy(() -> service.markRecord(sessionId, UUID.randomUUID(),
+                new MarkAttendanceRequest("PRESENT", null), teacherId, false))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(recordRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("a bulk mark with any outsider is refused as a whole")
+    void bulkWithOutsiderIsRefused() {
+        assertThatThrownBy(() -> service.bulkMark(sessionId, new BulkMarkRequest(List.of(
+                        new BulkMarkEntry(studentId, "PRESENT", null),
+                        new BulkMarkEntry(UUID.randomUUID(), "ABSENT", null))),
+                teacherId, false))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(recordRepository, never()).save(any());
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────

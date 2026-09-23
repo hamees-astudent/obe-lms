@@ -2,6 +2,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { BookOpen, ChevronRight } from 'lucide-react';
 import api from '@/lib/api';
+import { useOpenOfferings, useTeachingOfferings, type ManagedOffering } from '@/lib/queries';
 import QueryError from '@/components/ui/QueryError';
 import { useAuthStore } from '@/store/authStore';
 import Badge from '@/components/ui/Badge';
@@ -10,9 +11,6 @@ import { ENROLLMENT_STATUS } from '@/types/api';
 import type {
   EnrollmentResponse,
   OfferingSummaryResponse,
-  ProgramSummaryResponse,
-  SemesterResponse,
-  Page,
   UUID,
 } from '@/types/api';
 
@@ -106,6 +104,7 @@ function CourseGrid({
 function StudentCourses() {
   const enrollmentsQ = useQuery({
     queryKey: ['me', 'enrollments', 'active'],
+    meta: { errorShownInline: true },
     queryFn: () =>
       api
         .get<EnrollmentResponse[]>(`/me/enrollments?status=${ENROLLMENT_STATUS.ACTIVE}`)
@@ -151,73 +150,30 @@ function StudentCourses() {
   );
 }
 
+function toCourseCard(o: ManagedOffering): CourseCardData {
+  return {
+    pscId: o.id,
+    courseCode: o.courseCode,
+    courseName: o.courseName,
+    creditHours: o.creditHours,
+    semesterName: o.semesterName,
+    programName: o.programName,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Teacher / Assistant view — offerings assigned to this user
 // ---------------------------------------------------------------------------
 function TeacherCourses() {
-  const user = useAuthStore((s) => s.user);
-
-  const programsQ = useQuery({
-    queryKey: ['programs', 'active'],
-    queryFn: () =>
-      api
-        .get<Page<ProgramSummaryResponse>>('/programs?status=ACTIVE&size=100')
-        .then((r) => r.data.content),
-  });
-  const programs = programsQ.data ?? [];
-
-  const semesterQueries = useQueries({
-    queries: programs.map((p) => ({
-      queryKey: ['programs', p.id, 'semesters', 'open'],
-      queryFn: () =>
-        api
-          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=OPEN`)
-          .then((r) => r.data),
-      enabled: programs.length > 0,
-    })),
-  });
-  const allSemesters = semesterQueries.flatMap((q) => q.data ?? []);
-
-  const offeringQueries = useQueries({
-    queries: allSemesters.map((s) => ({
-      queryKey: ['semesters', s.id, 'offerings'],
-      queryFn: () =>
-        api
-          .get<OfferingSummaryResponse[]>(`/semesters/${s.id}/offerings`)
-          .then((r) => r.data),
-      enabled: allSemesters.length > 0,
-    })),
-  });
-
-  const loading =
-    programsQ.isLoading ||
-    semesterQueries.some((q) => q.isLoading) ||
-    offeringQueries.some((q) => q.isLoading);
-
-  const semesterMap = new Map<UUID, SemesterResponse>(
-    allSemesters.map((s) => [s.id, s]),
-  );
-
-  const cards: CourseCardData[] = offeringQueries
-    .flatMap((q, idx) =>
-      (q.data ?? []).map((o) => ({ o, semester: allSemesters[idx] })),
-    )
-    .filter(({ o }) => o.teacherId === user?.id)
-    .map(({ o, semester }) => ({
-      pscId: o.id,
-      courseCode: o.courseCode,
-      courseName: o.courseName,
-      creditHours: o.creditHours,
-      semesterName: semester?.name ?? semesterMap.get(o.semesterId)?.name,
-      programName: semesterMap.get(o.semesterId)?.programName,
-    }));
+  const { offerings, isLoading } = useTeachingOfferings();
+  const cards: CourseCardData[] = offerings.map(toCourseCard);
 
   return (
     <CourseGrid
       title="My courses"
       cards={cards}
       emptyMsg="You are not assigned to any active courses."
-      loading={loading}
+      loading={isLoading}
     />
   );
 }
@@ -226,66 +182,15 @@ function TeacherCourses() {
 // Admin view — all active offerings across all programs
 // ---------------------------------------------------------------------------
 function AdminCourses() {
-  const programsQ = useQuery({
-    queryKey: ['programs', 'active'],
-    queryFn: () =>
-      api
-        .get<Page<ProgramSummaryResponse>>('/programs?status=ACTIVE&size=100')
-        .then((r) => r.data.content),
-  });
-  const programs = programsQ.data ?? [];
-
-  const semesterQueries = useQueries({
-    queries: programs.map((p) => ({
-      queryKey: ['programs', p.id, 'semesters', 'open'],
-      queryFn: () =>
-        api
-          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=OPEN`)
-          .then((r) => r.data),
-      enabled: programs.length > 0,
-    })),
-  });
-  const allSemesters = semesterQueries.flatMap((q) => q.data ?? []);
-
-  const offeringQueries = useQueries({
-    queries: allSemesters.map((s) => ({
-      queryKey: ['semesters', s.id, 'offerings'],
-      queryFn: () =>
-        api
-          .get<OfferingSummaryResponse[]>(`/semesters/${s.id}/offerings`)
-          .then((r) => r.data),
-      enabled: allSemesters.length > 0,
-    })),
-  });
-
-  const loading =
-    programsQ.isLoading ||
-    semesterQueries.some((q) => q.isLoading) ||
-    offeringQueries.some((q) => q.isLoading);
-
-  const semesterMap = new Map<UUID, SemesterResponse>(
-    allSemesters.map((s) => [s.id, s]),
-  );
-
-  const cards: CourseCardData[] = offeringQueries
-    .flatMap((q, idx) =>
-      (q.data ?? []).map((o) => ({ o, semester: allSemesters[idx] })),
-    )
-    .map(({ o, semester }) => ({
-      pscId: o.id,
-      courseCode: o.courseCode,
-      courseName: o.courseName,
-      creditHours: o.creditHours,
-      semesterName: semester?.name ?? semesterMap.get(o.semesterId)?.name,
-      programName: semesterMap.get(o.semesterId)?.programName,
-    }));
+  const { offerings, isLoading } = useOpenOfferings();
+  const cards: CourseCardData[] = offerings.map(toCourseCard);
 
   return (
     <CourseGrid
       title="All active courses"
       cards={cards}
       emptyMsg="No active courses found."
-      loading={loading}
+      loading={isLoading}
     />
   );
 }

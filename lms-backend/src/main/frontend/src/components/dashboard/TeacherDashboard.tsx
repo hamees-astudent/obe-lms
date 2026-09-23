@@ -1,66 +1,23 @@
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { BookOpen, ClipboardCheck, FileText, Bell, ChevronRight, Users } from 'lucide-react';
 import api from '@/lib/api';
+import { useTeachingOfferings } from '@/lib/queries';
 import { useAuthStore } from '@/store/authStore';
 import Card, { CardHeader } from '@/components/ui/Card';
-import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import type {
-  ProgramSummaryResponse,
-  SemesterResponse,
-  OfferingSummaryResponse,
   NotificationResponse,
   NotificationPage,
-  Page,
 } from '@/types/api';
-
-function SemesterBadge({ status }: { status: string }) {
-  if (status === 'ACTIVE') return <Badge variant="success">Active</Badge>;
-  if (status === 'UPCOMING') return <Badge variant="info">Upcoming</Badge>;
-  return <Badge variant="default">Completed</Badge>;
-}
 
 export default function TeacherDashboard() {
   const user = useAuthStore((s) => s.user);
   const isAssistant = user?.role === 'ASSISTANT';
 
-  // 1. Load all active programs
-  const programsQ = useQuery({
-    queryKey: ['programs', 'active'],
-    queryFn: () =>
-      api.get<Page<ProgramSummaryResponse>>('/programs?status=ACTIVE&size=100').then((r) => r.data),
-  });
-  const activePrograms = programsQ.data?.content ?? [];
-
-  // 2. Load active semesters for each program (parallel)
-  const semesterQueries = useQueries({
-    queries: activePrograms.map((p) => ({
-      queryKey: ['programs', p.id, 'semesters', 'open'],
-      queryFn: () =>
-        api
-          .get<SemesterResponse[]>(`/programs/${p.id}/semesters?status=OPEN`)
-          .then((r) => r.data),
-      enabled: activePrograms.length > 0,
-    })),
-  });
-  const activeSemesters = semesterQueries.flatMap((q) => q.data ?? []);
-
-  // 3. Load offerings for each active semester (parallel)
-  const offeringQueries = useQueries({
-    queries: activeSemesters.map((s) => ({
-      queryKey: ['semesters', s.id, 'offerings'],
-      queryFn: () =>
-        api
-          .get<OfferingSummaryResponse[]>(`/semesters/${s.id}/offerings`)
-          .then((r) => r.data),
-      enabled: activeSemesters.length > 0,
-    })),
-  });
-  const allOfferings = offeringQueries.flatMap((q) => q.data ?? []);
-
-  // 4. Filter to this teacher's offerings
-  const myOfferings = allOfferings.filter((o) => o.teacherId === user?.id);
+  // Courses this user teaches or assists, however they were assigned
+  const { offerings: myOfferings, isLoading: loadingOfferings } = useTeachingOfferings();
+  const activeSemesterCount = new Set(myOfferings.map((o) => o.semesterId)).size;
 
   // 5. Recent notifications
   const notificationsQ = useQuery({
@@ -70,16 +27,6 @@ export default function TeacherDashboard() {
   });
   const recentNotifications: NotificationResponse[] =
     notificationsQ.data?.content ?? [];
-
-  const loadingOfferings =
-    programsQ.isLoading ||
-    semesterQueries.some((q) => q.isLoading) ||
-    offeringQueries.some((q) => q.isLoading);
-
-  // Enrich offering with semester info
-  function semesterForOffering(o: OfferingSummaryResponse): SemesterResponse | undefined {
-    return activeSemesters.find((s) => s.id === o.semesterId);
-  }
 
   return (
     <div className="space-y-6">
@@ -117,7 +64,7 @@ export default function TeacherDashboard() {
                 <ClipboardCheck size={20} />
               </div>
               <div>
-                <p className="text-2xl font-bold text-gray-900">{activeSemesters.length}</p>
+                <p className="text-2xl font-bold text-gray-900">{loadingOfferings ? <Spinner size="sm" /> : activeSemesterCount}</p>
                 <p className="text-sm text-gray-500">Active Semesters</p>
               </div>
             </div>
@@ -166,7 +113,6 @@ export default function TeacherDashboard() {
           ) : (
             <ul className="divide-y divide-gray-50">
               {myOfferings.map((offering, idx) => {
-                const sem = semesterForOffering(offering);
                 return (
                   <li key={offering.id} className="px-5 py-3 animate-slide-up" style={{ animationDelay: `${idx * 60}ms` }}>
                     <div className="flex items-start justify-between gap-2">
@@ -175,31 +121,30 @@ export default function TeacherDashboard() {
                           {offering.courseCode} — {offering.courseName}
                         </p>
                         <p className="mt-0.5 text-xs text-gray-400">
-                          {sem?.programName} · {sem?.name}
+                          {offering.programName} · {offering.semesterName}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        {sem && <SemesterBadge status={sem.status} />}
                         <span className="text-xs text-gray-400">{offering.creditHours} cr</span>
                       </div>
                     </div>
                     <div className="mt-2 flex gap-2">
                       <Link
-                        to={`/attendance?pscId=${offering.id}`}
+                        to={`/attendance/${offering.id}`}
                         className="flex items-center gap-1 rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100"
                       >
                         <ClipboardCheck size={11} />
                         Attendance
                       </Link>
                       <Link
-                        to={`/assessment?pscId=${offering.id}`}
+                        to={`/assessment/${offering.id}`}
                         className="flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
                       >
                         <FileText size={11} />
                         Assessment
                       </Link>
                       <Link
-                        to={`/courses?pscId=${offering.id}`}
+                        to={`/courses/${offering.id}`}
                         className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-200"
                       >
                         <Users size={11} />
