@@ -41,6 +41,7 @@ import java.util.List;
  *   <li>POST  /api/auth/refresh</li>
  *   <li>GET   /actuator/health/**</li>
  *   <li>GET   / , /index.html, /assets/**, /favicon.ico  (SPA static resources)</li>
+ *   <li>GET   any non-/api, non-/actuator path  (SPA client routes → index.html)</li>
  * </ul>
  */
 @Configuration
@@ -79,6 +80,13 @@ public class SecurityConfig {
                                 "/assets/**",
                                 "/favicon.ico",
                                 "/vite.svg").permitAll()
+                        // ── SPA client-side routes ───────────────────────────
+                        // A reload or deep link (/courses/123) is a plain GET
+                        // with no bearer token; it only returns the app shell
+                        // (SpaWebConfig). All data stays behind /api auth.
+                        .requestMatchers(req -> HttpMethod.GET.matches(req.getMethod())
+                                && !req.getRequestURI().startsWith("/api/")
+                                && !req.getRequestURI().startsWith("/actuator")).permitAll()
                         // ── Error page ───────────────────────────────────────
                         .requestMatchers("/error").permitAll()
 

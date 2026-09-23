@@ -16,6 +16,7 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -219,15 +220,16 @@ public class AssessmentService {
     public AssignmentSubmissionResponse getSubmission(UUID submissionId, UUID actorId, boolean isAdmin) {
         AssignmentSubmission sub = findSubmission(submissionId);
         offeringStaff.require(findAssignment(sub.getAssignmentId()).getPscId(), actorId, isAdmin);
-        return toSubmissionResponse(sub);
+        return toSubmissionResponse(sub, submitters(List.of(sub.getStudentId())).get(sub.getStudentId()));
     }
 
     @Transactional(readOnly = true)
     public List<AssignmentSubmissionResponse> listSubmissions(UUID assignmentId,
                                                               UUID actorId, boolean isAdmin) {
         offeringStaff.require(findAssignment(assignmentId).getPscId(), actorId, isAdmin);
-        return submissionRepository.findAllByAssignmentId(assignmentId)
-                .stream().map(this::toSubmissionResponse).toList();
+        List<AssignmentSubmission> subs = submissionRepository.findAllByAssignmentId(assignmentId);
+        Map<UUID, SubmitterView> who = submitters(subs.stream().map(AssignmentSubmission::getStudentId).toList());
+        return subs.stream().map(sub -> toSubmissionResponse(sub, who.get(sub.getStudentId()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -543,14 +545,15 @@ public class AssessmentService {
     public QuizSubmissionResponse getQuizSubmission(UUID submissionId, UUID actorId, boolean isAdmin) {
         QuizSubmission sub = findQuizSubmission(submissionId);
         offeringStaff.require(findQuiz(sub.getQuizId()).getPscId(), actorId, isAdmin);
-        return toQuizSubmissionResponse(sub);
+        return toQuizSubmissionResponse(sub, submitters(List.of(sub.getStudentId())).get(sub.getStudentId()));
     }
 
     @Transactional(readOnly = true)
     public List<QuizSubmissionResponse> listQuizSubmissions(UUID quizId, UUID actorId, boolean isAdmin) {
         offeringStaff.require(findQuiz(quizId).getPscId(), actorId, isAdmin);
-        return quizSubmissionRepository.findAllByQuizId(quizId)
-                .stream().map(this::toQuizSubmissionResponse).toList();
+        List<QuizSubmission> subs = quizSubmissionRepository.findAllByQuizId(quizId);
+        Map<UUID, SubmitterView> who = submitters(subs.stream().map(QuizSubmission::getStudentId).toList());
+        return subs.stream().map(sub -> toQuizSubmissionResponse(sub, who.get(sub.getStudentId()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -771,11 +774,28 @@ public class AssessmentService {
                 .build();
     }
 
+    /**
+     * Staff see who submitted by name and roll number, not a bare UUID.
+     * Empty input returns an empty map: {@code IN ()} is invalid SQL.
+     */
+    private Map<UUID, SubmitterView> submitters(Collection<UUID> studentIds) {
+        if (studentIds.isEmpty()) return Map.of();
+        return submissionRepository.findSubmitters(studentIds).stream()
+                .collect(Collectors.toMap(v -> UUID.fromString(v.getStudentId()), v -> v));
+    }
+
     private AssignmentSubmissionResponse toSubmissionResponse(AssignmentSubmission s) {
+        return toSubmissionResponse(s, null);
+    }
+
+    private AssignmentSubmissionResponse toSubmissionResponse(AssignmentSubmission s, SubmitterView who) {
         return AssignmentSubmissionResponse.builder()
                 .id(s.getId())
                 .assignmentId(s.getAssignmentId())
                 .studentId(s.getStudentId())
+                .studentName(who != null ? who.getStudentName() : null)
+                .studentEmail(who != null ? who.getStudentEmail() : null)
+                .studentNumber(who != null ? who.getStudentNumber() : null)
                 .status(s.getStatus())
                 .textContent(s.getTextContent())
                 .fileKey(s.getFileKey())
@@ -826,10 +846,17 @@ public class AssessmentService {
     }
 
     private QuizSubmissionResponse toQuizSubmissionResponse(QuizSubmission s) {
+        return toQuizSubmissionResponse(s, null);
+    }
+
+    private QuizSubmissionResponse toQuizSubmissionResponse(QuizSubmission s, SubmitterView who) {
         return QuizSubmissionResponse.builder()
                 .id(s.getId())
                 .quizId(s.getQuizId())
                 .studentId(s.getStudentId())
+                .studentName(who != null ? who.getStudentName() : null)
+                .studentEmail(who != null ? who.getStudentEmail() : null)
+                .studentNumber(who != null ? who.getStudentNumber() : null)
                 .answers(s.getAnswers())
                 .startedAt(s.getStartedAt())
                 .remainingSeconds(remainingSeconds(s))

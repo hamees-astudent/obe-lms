@@ -209,6 +209,26 @@ function AssignmentFormModal({ pscId, editing, onClose }: AssignmentFormModalPro
 }
 
 // ---------------------------------------------------------------------------
+// Submitter — who a submission belongs to, as on the attendance roster
+// ---------------------------------------------------------------------------
+function Submitter({
+  s,
+}: {
+  s: { studentId: UUID; studentName?: string; studentEmail?: string; studentNumber?: string };
+}) {
+  return (
+    <p className="text-sm" title={s.studentEmail}>
+      <span className="font-medium text-gray-800">
+        {s.studentName ?? `${s.studentId.slice(0, 8)}…`}
+      </span>
+      {s.studentNumber && (
+        <span className="ml-2 font-mono text-xs text-gray-400">{s.studentNumber}</span>
+      )}
+    </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Submitted-file link
 // ---------------------------------------------------------------------------
 function SubmittedFileLink({
@@ -626,7 +646,7 @@ function SubmissionsList({
           {submissions.map((s) => (
             <div key={s.id} className="flex items-start justify-between gap-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-mono text-gray-500">{s.studentId.slice(0, 12)}…</p>
+                <Submitter s={s} />
                 {s.submittedAt && (
                   <p className="mt-0.5 text-xs text-gray-400">
                     Submitted {fmt(s.submittedAt)}
@@ -1973,9 +1993,7 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
             <div className="divide-y divide-gray-100">
               {(teacherSubmissionsQ.data ?? []).map((s) => (
                 <div key={s.id} className="flex items-center justify-between py-2 text-sm">
-                  <span className="font-mono text-xs text-gray-500">
-                    {s.studentId.slice(0, 12)}…
-                  </span>
+                  <Submitter s={s} />
                   <div className="flex items-center gap-3">
                     {s.submittedAt ? (
                       <span className="text-xs text-gray-400">{fmt(s.submittedAt)}</span>

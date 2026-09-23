@@ -13,6 +13,10 @@ public class AssignmentSubmissionResponse {
     UUID id;
     UUID assignmentId;
     UUID studentId;
+    /** Submitter identity; populated on staff-facing responses only. */
+    String studentName;
+    String studentEmail;
+    String studentNumber;
     String status;
     String textContent;
     String fileKey;

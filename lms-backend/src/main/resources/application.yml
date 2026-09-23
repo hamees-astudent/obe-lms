@@ -314,9 +314,12 @@ app:
     extraction:
       enabled:         ${EXAM_EXTRACTION_ENABLED:true}
       api-key:         ${ANTHROPIC_API_KEY:}
-      model:           ${EXAM_EXTRACTION_MODEL:claude-opus-5}
+      model:           ${EXAM_EXTRACTION_MODEL:claude-opus-5-5}
       max-image-bytes: ${EXAM_EXTRACTION_MAX_IMAGE_BYTES:10485760}
       timeout-seconds: ${EXAM_EXTRACTION_TIMEOUT:120}
+      # Request/response traffic with Claude, for debugging (see logback-spring.xml).
+      # Contains student names and roll numbers. Set the ClaudeTraffic level below to OFF to stop it.
+      log-file:        ${EXAM_EXTRACTION_LOG_FILE:logs/claude-extraction.log}
 
   files:
     storage:
@@ -339,5 +342,6 @@ logging:
     org.flywaydb:                            INFO
     org.apache.kafka:                        WARN
     software.amazon.awssdk:                  WARN
+    com.lms.modules.exams.ClaudeTraffic:     ${EXAM_EXTRACTION_LOG_LEVEL:INFO}   # OFF to stop the Claude traffic log
   pattern:
     console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} : %m%n%wEx"

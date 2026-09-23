@@ -16,6 +16,13 @@ public class TranscriptSummaryResponse {
     UUID          programId;
     BigDecimal    semesterGpa;
     BigDecimal    cumulativeGpa;
+    /** Display fields the UI reads (dashboard, transcript cards); from the snapshot. */
+    String        studentName;
+    String        semesterName;
+    String        programName;
+    /** Same values as semesterGpa / cumulativeGpa under the names the UI uses. */
+    BigDecimal    sgpa;
+    BigDecimal    cgpa;
     int           totalCreditHours;
     int           earnedCreditHours;
     LocalDateTime generatedAt;

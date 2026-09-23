@@ -15,6 +15,7 @@ import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { ENROLLMENT_STATUS } from '@/types/api';
 import type {
+  UUID,
   EnrollmentResponse,
   OfferingSummaryResponse,
   TranscriptSummaryResponse,
@@ -34,12 +35,18 @@ function AttendancePill({ pct }: { pct: number }) {
   );
 }
 
+/** Mirrors the backend AttendanceSummaryResponse record. */
 interface AttendanceSummaryResponse {
-  presentCount: number;
-  absentCount: number;
-  lateCount: number;
-  totalSessions: number;
-  attendancePercentage: number;
+  pscId: UUID;
+  studentId: UUID;
+  attended: number;
+  total: number;
+  percentage: number;
+}
+
+/** GPA to two places; "—" when the server has none (never throw mid-render). */
+function fmtGpa(v: number | null | undefined): string {
+  return typeof v === 'number' ? v.toFixed(2) : '—';
 }
 
 export default function StudentDashboard() {
@@ -136,7 +143,7 @@ export default function StudentDashboard() {
                   <Spinner size="sm" />
                 ) : latestTranscript ? (
                   <p className="text-2xl font-bold text-gray-900">
-                    {latestTranscript.cgpa.toFixed(2)}
+                    {fmtGpa(latestTranscript.cgpa)}
                   </p>
                 ) : (
                   <p className="text-2xl font-bold text-gray-400">—</p>
@@ -210,8 +217,8 @@ export default function StudentDashboard() {
                         )}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        {attendance ? (
-                          <AttendancePill pct={attendance.attendancePercentage} />
+                        {attendance && attendance.total > 0 ? (
+                          <AttendancePill pct={attendance.percentage} />
                         ) : (
                           <Badge variant="default">—</Badge>
                         )}
@@ -251,9 +258,9 @@ export default function StudentDashboard() {
             ) : (
               <div className="grid grid-cols-2 gap-px bg-gray-100">
                 {[
-                  { label: 'CGPA', value: latestTranscript.cgpa.toFixed(2) },
-                  { label: 'SGPA', value: latestTranscript.sgpa.toFixed(2) },
-                  { label: 'Semester', value: latestTranscript.semesterName },
+                  { label: 'CGPA', value: fmtGpa(latestTranscript.cgpa) },
+                  { label: 'SGPA', value: fmtGpa(latestTranscript.sgpa) },
+                  { label: 'Semester', value: latestTranscript.semesterName ?? '—' },
                   {
                     label: 'Credit Hrs',
                     value: latestTranscript.totalCreditHours,

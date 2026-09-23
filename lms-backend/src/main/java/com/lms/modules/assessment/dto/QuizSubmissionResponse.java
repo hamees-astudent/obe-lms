@@ -15,6 +15,10 @@ public class QuizSubmissionResponse {
     UUID id;
     UUID quizId;
     UUID studentId;
+    /** Submitter identity; populated on staff-facing responses only. */
+    String studentName;
+    String studentEmail;
+    String studentNumber;
     Map<String, List<String>> answers;
     LocalDateTime startedAt;
     /** Seconds left on a timed attempt still in progress; absent otherwise. */

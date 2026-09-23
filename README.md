@@ -153,9 +153,11 @@ The application reads configuration from environment variables with safe default
 | `APP_TIME_ZONE` | `Asia/Karachi` | Zone the backend runs in. Deadlines and quiz timers are stored without a zone and read by browsers as local time, so this must be the users' zone. An invalid zone ID stops startup |
 | `ANTHROPIC_API_KEY` | *(empty)* | Claude API key for reading marks off scanned exam copies. **Leave blank to disable scanning** — the app still starts and teachers enter exam marks manually |
 | `EXAM_EXTRACTION_ENABLED` | `true` | Master switch for exam marks-sheet extraction |
-| `EXAM_EXTRACTION_MODEL` | `claude-opus-5` | Vision model used to read the marks table |
+| `EXAM_EXTRACTION_MODEL` | `claude-opus-5-5` | Vision model used to read the marks table |
 | `EXAM_EXTRACTION_MAX_IMAGE_BYTES` | `10485760` | Largest page image accepted (10 MB) |
 | `EXAM_EXTRACTION_TIMEOUT` | `120` | Seconds to wait for one extraction |
+| `EXAM_EXTRACTION_LOG_FILE` | `logs/claude-extraction.log` | File recording each extraction's prompt, raw Claude response, timing and errors (image logged as size + SHA-256 only). Contains student details — do not share |
+| `EXAM_EXTRACTION_LOG_LEVEL` | `INFO` | Set to `OFF` to stop writing the extraction log |
 
 Export variables in your shell, or create a `.env` file and source it before running Maven:
 

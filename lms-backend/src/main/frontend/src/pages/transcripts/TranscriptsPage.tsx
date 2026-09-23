@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { useQuery, useQueries, useMutation } from '@tanstack/react-query';
 import {
   GraduationCap,
@@ -49,9 +49,21 @@ async function downloadPdf(id: string, filename: string) {
 // ---------------------------------------------------------------------------
 // GPA Badge
 // ---------------------------------------------------------------------------
-function GpaBadge({ label, value }: { label: string; value: number }) {
+/** A number to fixed places, or "—" when the server has none. */
+function fmt(v: number | null | undefined, digits: number): string {
+  return typeof v === 'number' ? v.toFixed(digits) : '—';
+}
+
+function gpaColor(v: number | null): string {
+  if (v === null) return 'text-gray-400';
+  return v >= 2.5 ? 'text-green-600' : 'text-red-600';
+}
+
+function GpaBadge({ label, value }: { label: string; value: number | null }) {
   const color =
-    value >= 3.5
+    value === null
+      ? 'bg-gray-100 text-gray-500'
+      : value >= 3.5
       ? 'bg-green-100 text-green-700'
       : value >= 2.5
         ? 'bg-blue-100 text-blue-700'
@@ -61,7 +73,7 @@ function GpaBadge({ label, value }: { label: string; value: number }) {
   return (
     <div className={`rounded-lg px-4 py-2 text-center ${color}`}>
       <p className="text-xs font-medium uppercase tracking-wide opacity-70">{label}</p>
-      <p className="text-2xl font-bold">{value.toFixed(2)}</p>
+      <p className="text-2xl font-bold">{fmt(value, 2)}</p>
     </div>
   );
 }
@@ -69,7 +81,8 @@ function GpaBadge({ label, value }: { label: string; value: number }) {
 // ---------------------------------------------------------------------------
 // Grade Color helper
 // ---------------------------------------------------------------------------
-function gradeColor(letter: string) {
+function gradeColor(letter: string | null) {
+  if (!letter) return 'text-gray-400';
   if (['A+', 'A', 'A-'].includes(letter)) return 'text-green-700 font-semibold';
   if (['B+', 'B', 'B-'].includes(letter)) return 'text-blue-700 font-semibold';
   if (['C+', 'C', 'C-'].includes(letter)) return 'text-yellow-700 font-semibold';
@@ -96,14 +109,15 @@ function TranscriptDetailModal({
   });
 
   const t = detailQ.data;
+  const snap = t?.snapshot;
 
   async function handleDownload() {
-    if (!t) return;
+    if (!snap) return;
     setDownloading(true);
     try {
       await downloadPdf(
         id,
-        `transcript-${t.studentName.replace(/\s+/g, '-')}-${t.semesterName.replace(/\s+/g, '-')}.pdf`,
+        `transcript-${snap.studentName.replace(/\s+/g, '-')}-${snap.semesterName.replace(/\s+/g, '-')}.pdf`,
       );
     } finally {
       setDownloading(false);
@@ -120,22 +134,24 @@ function TranscriptDetailModal({
             <p className="text-center text-sm text-red-600 py-10">Failed to load transcript.</p>
           )}
 
-          {t && (
+          {t && snap && (
             <>
               {/* Student info */}
               <div className="rounded-xl border bg-gray-50 p-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <p className="text-xs text-gray-500">Student</p>
-                  <p className="font-semibold text-gray-900">{t.studentName}</p>
-                  <p className="text-sm text-gray-600">{t.studentEmail}</p>
+                  <p className="font-semibold text-gray-900">{snap.studentName}</p>
+                  {snap.studentNumber && (
+                    <p className="font-mono text-sm text-gray-600">{snap.studentNumber}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Program</p>
-                  <p className="font-semibold text-gray-900">{t.programName}</p>
+                  <p className="font-semibold text-gray-900">{snap.programName}</p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Semester</p>
-                  <p className="font-semibold text-gray-900">{t.semesterName}</p>
+                  <p className="font-semibold text-gray-900">{snap.semesterName}</p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Generated At</p>
@@ -147,14 +163,14 @@ function TranscriptDetailModal({
 
               {/* GPA Summary */}
               <div className="flex flex-wrap gap-4">
-                <GpaBadge label="SGPA" value={t.snapshotData.sgpa} />
-                <GpaBadge label="CGPA" value={t.snapshotData.cgpa} />
+                <GpaBadge label="SGPA" value={t.semesterGpa} />
+                <GpaBadge label="CGPA" value={t.cumulativeGpa} />
                 <div className="rounded-lg border px-4 py-2 text-center">
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
                     Credit Hours
                   </p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {t.snapshotData.courses.reduce((s, c) => s + c.creditHours, 0)}
+                    {t.totalCreditHours}
                   </p>
                 </div>
               </div>
@@ -179,9 +195,9 @@ function TranscriptDetailModal({
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {t.snapshotData.courses.map((c) => (
-                        <>
-                          <tr key={c.courseId} className="hover:bg-gray-50">
+                      {snap.courses.map((c) => (
+                        <Fragment key={c.pscId}>
+                          <tr className="hover:bg-gray-50">
                             <td className="px-4 py-3">
                               <p className="font-medium text-gray-900">{c.courseCode}</p>
                               <p className="text-xs text-gray-500">{c.courseName}</p>
@@ -190,29 +206,29 @@ function TranscriptDetailModal({
                               {c.creditHours}
                             </td>
                             <td className="px-4 py-3 text-center text-gray-700">
-                              {c.obtainedMarks}/{c.totalMarks}
+                              {c.marksObtained ?? '—'}/{c.totalMarks ?? '—'}
                             </td>
                             <td className="px-4 py-3 text-center text-gray-700">
-                              {c.percentage.toFixed(1)}%
+                              {c.percentage === null ? '—' : `${fmt(c.percentage, 1)}%`}
                             </td>
-                            <td className={`px-4 py-3 text-center ${gradeColor(c.letterGrade)}`}>
-                              {c.letterGrade}
+                            <td className={`px-4 py-3 text-center ${gradeColor(c.gradeLetter)}`}>
+                              {c.gradeLetter ?? '—'}
                             </td>
                             <td className="px-4 py-3 text-center text-gray-700">
-                              {c.gradePoints.toFixed(2)}
+                              {fmt(c.gradePoints, 2)}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              {c.cloAttainments.length > 0 && (
+                              {c.cloAttainment.length > 0 && (
                                 <button
                                   onClick={() =>
                                     setExpandedCourse(
-                                      expandedCourse === c.courseId ? null : c.courseId,
+                                      expandedCourse === c.pscId ? null : c.pscId,
                                     )
                                   }
                                   className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline"
                                 >
-                                  {c.cloAttainments.length}
-                                  {expandedCourse === c.courseId ? (
+                                  {c.cloAttainment.length}
+                                  {expandedCourse === c.pscId ? (
                                     <ChevronUp className="h-3 w-3" />
                                   ) : (
                                     <ChevronDown className="h-3 w-3" />
@@ -221,15 +237,15 @@ function TranscriptDetailModal({
                               )}
                             </td>
                           </tr>
-                          {expandedCourse === c.courseId && (
-                            <tr key={`${c.courseId}-clo`} className="bg-primary-50">
+                          {expandedCourse === c.pscId && (
+                            <tr className="bg-primary-50">
                               <td colSpan={7} className="px-6 py-3">
                                 <p className="mb-2 text-xs font-semibold uppercase text-primary-700">
                                   CLO Attainments — {c.courseCode}
                                 </p>
                                 <div className="grid gap-2 sm:grid-cols-2">
-                                  {c.cloAttainments.map((clo) => (
-                                    <div key={clo.cloId} className="flex items-center gap-3">
+                                  {c.cloAttainment.map((clo) => (
+                                    <div key={clo.cloCode} className="flex items-center gap-3" title={clo.cloTitle}>
                                       <span className="w-20 shrink-0 rounded bg-primary-100 px-2 py-0.5 text-center text-xs font-medium text-primary-700">
                                         {clo.cloCode}
                                       </span>
@@ -238,13 +254,13 @@ function TranscriptDetailModal({
                                           <div
                                             className="h-2 rounded-full bg-primary-500"
                                             style={{
-                                              width: `${Math.min(100, clo.attainmentPercentage)}%`,
+                                              width: `${Math.min(100, clo.attainmentPercentage ?? 0)}%`,
                                             }}
                                           />
                                         </div>
                                       </div>
                                       <span className="w-10 text-right text-xs text-gray-600">
-                                        {clo.attainmentPercentage.toFixed(1)}%
+                                        {clo.attainmentPercentage === null ? '—' : `${fmt(clo.attainmentPercentage, 1)}%`}
                                       </span>
                                     </div>
                                   ))}
@@ -252,7 +268,7 @@ function TranscriptDetailModal({
                               </td>
                             </tr>
                           )}
-                        </>
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -260,35 +276,38 @@ function TranscriptDetailModal({
               </div>
 
               {/* PLO Attainments */}
-              {t.snapshotData.ploAttainments.length > 0 && (
+              {snap.ploAttainment.length > 0 && (
                 <div>
                   <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
                     PLO Attainments
                   </h3>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {t.snapshotData.ploAttainments.map((plo) => (
-                      <div key={plo.ploId} className="rounded-lg border p-3">
+                    {snap.ploAttainment.map((plo) => {
+                      const pct = plo.attainmentPercentage;
+                      return (
+                      <div key={plo.ploCode} className="rounded-lg border p-3">
                         <div className="mb-1.5 flex items-center justify-between">
                           <div>
                             <span className="text-xs font-semibold text-gray-700">
                               {plo.ploCode}
                             </span>
-                            <span className="ml-2 text-xs text-gray-500">{plo.description}</span>
+                            <span className="ml-2 text-xs text-gray-500">{plo.ploTitle}</span>
                           </div>
                           <span className="text-xs font-medium text-gray-700">
-                            {plo.attainmentPercentage.toFixed(1)}%
+                            {pct === null ? '—' : `${fmt(pct, 1)}%`}
                           </span>
                         </div>
                         <div className="h-2 rounded-full bg-gray-200">
                           <div
-                            className={`h-2 rounded-full ${plo.attainmentPercentage >= 70 ? 'bg-green-500' : plo.attainmentPercentage >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
+                            className={`h-2 rounded-full ${pct === null ? 'bg-gray-300' : pct >= 70 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
                             style={{
-                              width: `${Math.min(100, plo.attainmentPercentage)}%`,
+                              width: `${Math.min(100, pct ?? 0)}%`,
                             }}
                           />
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -352,14 +371,14 @@ function TranscriptCard({
           <div className="flex flex-wrap gap-4 text-sm">
             <div>
               <span className="text-gray-400">SGPA </span>
-              <span className={`font-semibold ${t.sgpa >= 2.5 ? 'text-green-600' : 'text-red-600'}`}>
-                {t.sgpa.toFixed(2)}
+              <span className={`font-semibold ${gpaColor(t.sgpa)}`}>
+                {fmt(t.sgpa, 2)}
               </span>
             </div>
             <div>
               <span className="text-gray-400">CGPA </span>
-              <span className={`font-semibold ${t.cgpa >= 2.5 ? 'text-green-600' : 'text-red-600'}`}>
-                {t.cgpa.toFixed(2)}
+              <span className={`font-semibold ${gpaColor(t.cgpa)}`}>
+                {fmt(t.cgpa, 2)}
               </span>
             </div>
             <div>

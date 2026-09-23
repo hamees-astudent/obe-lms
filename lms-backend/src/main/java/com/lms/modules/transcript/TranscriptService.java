@@ -383,6 +383,9 @@ public class TranscriptService {
     }
 
     private TranscriptSummaryResponse toSummary(Transcript t) {
+        TranscriptSnapshotData snapshot = t.getSnapshot() != null
+                ? objectMapper.convertValue(t.getSnapshot(), TranscriptSnapshotData.class)
+                : new TranscriptSnapshotData();
         return TranscriptSummaryResponse.builder()
                 .id(t.getId())
                 .studentId(t.getStudentId())
@@ -390,6 +393,11 @@ public class TranscriptService {
                 .programId(t.getProgramId())
                 .semesterGpa(t.getSemesterGpa())
                 .cumulativeGpa(t.getCumulativeGpa())
+                .studentName(snapshot.getStudentName())
+                .semesterName(snapshot.getSemesterName())
+                .programName(snapshot.getProgramName())
+                .sgpa(t.getSemesterGpa())
+                .cgpa(t.getCumulativeGpa())
                 .totalCreditHours(t.getTotalCreditHours())
                 .earnedCreditHours(t.getEarnedCreditHours())
                 .generatedAt(t.getGeneratedAt())

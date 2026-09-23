@@ -373,6 +373,10 @@ export interface AssignmentSubmissionResponse {
   id: UUID;
   assignmentId: UUID;
   studentId: UUID;
+  /** Submitter identity; present on staff-facing responses only. */
+  studentName?: string;
+  studentEmail?: string;
+  studentNumber?: string;
   status: string; // 'SUBMITTED' | 'GRADED'
   textContent?: string;
   fileKey?: string;
@@ -456,6 +460,10 @@ export interface QuizSubmissionResponse {
   id: UUID;
   quizId: UUID;
   studentId: UUID;
+  /** Submitter identity; present on staff-facing responses only. */
+  studentName?: string;
+  studentEmail?: string;
+  studentNumber?: string;
   answers: Record<string, string[]>; // questionId → selected option ids
   startedAt: string;
   /** Seconds left on a timed attempt in progress, computed by the server. */
@@ -561,62 +569,74 @@ export interface TranscriptSummaryResponse {
   id: UUID;
   studentId: UUID;
   studentName: string;
-  studentEmail: string;
   semesterId: UUID;
   semesterName: string;
   programId: UUID;
   programName: string;
-  cgpa: number;
-  sgpa: number;
+  cgpa: number | null;
+  sgpa: number | null;
   totalCreditHours: number;
   generatedAt: string;
 }
 
+// Transcript detail — mirrors the backend TranscriptResponse and the
+// TranscriptSnapshotData stored with it. Numbers the backend holds as a
+// nullable Double (marks before grading, attainment with no data) are
+// `number | null` here and must not be formatted unguarded.
 export interface CloAttainmentDetail {
-  cloId: UUID;
   cloCode: string;
-  description: string;
-  attainmentPercentage: number;
+  cloTitle: string;
+  attainmentPercentage: number | null;
 }
 
 export interface PloAttainmentDetail {
-  ploId: UUID;
   ploCode: string;
-  description: string;
-  attainmentPercentage: number;
+  ploTitle: string;
+  attainmentPercentage: number | null;
 }
 
 export interface CourseTranscriptDetail {
-  courseId: UUID;
+  pscId: UUID;
   courseCode: string;
   courseName: string;
   creditHours: number;
-  obtainedMarks: number;
-  totalMarks: number;
-  percentage: number;
-  letterGrade: string;
-  gradePoints: number;
-  cloAttainments: CloAttainmentDetail[];
+  attendancePercentage: number | null;
+  totalMarks: number | null;
+  marksObtained: number | null;
+  percentage: number | null;
+  gradeLetter: string | null;
+  gradePoints: number | null;
+  cloAttainment: CloAttainmentDetail[];
 }
 
 export interface TranscriptSnapshotData {
+  studentName: string;
+  studentNumber: string | null;
+  programName: string;
+  semesterName: string;
+  gradingScaleName: string | null;
+  semesterGpa: number | null;
+  cumulativeGpa: number | null;
+  totalCreditHours: number;
+  earnedCreditHours: number;
   courses: CourseTranscriptDetail[];
-  ploAttainments: PloAttainmentDetail[];
-  sgpa: number;
-  cgpa: number;
+  ploAttainment: PloAttainmentDetail[];
 }
 
 export interface TranscriptResponse {
   id: UUID;
   studentId: UUID;
-  studentName: string;
-  studentEmail: string;
   semesterId: UUID;
-  semesterName: string;
   programId: UUID;
-  programName: string;
-  snapshotData: TranscriptSnapshotData;
+  gradingScaleId: UUID;
+  semesterGpa: number | null;
+  cumulativeGpa: number | null;
+  totalCreditHours: number;
+  earnedCreditHours: number;
   generatedAt: string;
+  generatedBy: UUID | null;
+  createdAt: string;
+  snapshot: TranscriptSnapshotData;
 }
 
 // ---------------------------------------------------------------------------

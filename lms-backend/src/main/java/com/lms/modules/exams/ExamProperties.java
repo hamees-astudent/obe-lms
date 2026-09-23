@@ -24,7 +24,7 @@ public class ExamProperties {
     private String apiKey = "";
 
     /** Vision model used to read the marks sheet. */
-    private String model = "claude-opus-5";
+    private String model = "claude-opus-5-5";
 
     /**
      * Largest page image accepted, in bytes. Well below the 50 MB multipart

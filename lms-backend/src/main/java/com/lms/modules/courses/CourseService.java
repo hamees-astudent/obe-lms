@@ -423,7 +423,11 @@ public class CourseService {
     }
 
     // ── Material → CLO mappings ───────────────────────────────────────────────
+    // Both writes need their own read-write transaction: the class default is
+    // readOnly, under which Hibernate never flushes, so the mapping was
+    // "saved", returned 201, and silently discarded.
 
+    @Transactional
     public MaterialCloMappingResponse addMaterialCloMapping(
             UUID materialId, CreateMaterialCloMappingRequest req, UUID actorId, boolean isAdmin) {
         var material = requireMaterial(materialId);
@@ -450,6 +454,7 @@ public class CourseService {
         return toMaterialCloResponse(materialCloMappingRepository.save(mapping));
     }
 
+    @Transactional
     public void removeMaterialCloMapping(UUID materialId, UUID cloId, UUID actorId, boolean isAdmin) {
         offeringStaff.require(requireMaterial(materialId).getPsc().getId(), actorId, isAdmin);
         var id = new MaterialCloMappingId(materialId, cloId);
