@@ -26,6 +26,7 @@ const ExamsPage               = lazy(() => import('@/pages/exams/ExamsPage'));
 const CourseExamsPage         = lazy(() => import('@/pages/exams/CourseExamsPage'));
 const ExamMarksPage           = lazy(() => import('@/pages/exams/ExamMarksPage'));
 const TranscriptsPage     = lazy(() => import('@/pages/transcripts/TranscriptsPage'));
+const TimetablePage       = lazy(() => import('@/pages/timetable/TimetablePage'));
 const NotificationsPage   = lazy(() => import('@/pages/notifications/NotificationsPage'));
 const UsersPage           = lazy(() => import('@/pages/users/UsersPage'));
 const ProgramsPage        = lazy(() => import('@/pages/programs/ProgramsPage'));
@@ -189,6 +190,14 @@ const router = createBrowserRouter([
                 element: (
                   <LazyPage>
                     <ExamMarksPage />
+                  </LazyPage>
+                ),
+              },
+              {
+                path: 'timetable',
+                element: (
+                  <LazyPage>
+                    <TimetablePage />
                   </LazyPage>
                 ),
               },

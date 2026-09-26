@@ -321,6 +321,15 @@ app:
       # Contains student names and roll numbers. Set the ClaudeTraffic level below to OFF to stop it.
       log-file:        ${EXAM_EXTRACTION_LOG_FILE:logs/claude-extraction.log}
 
+  # ── Timetable ───────────────────────────────────────────────────────────────
+  # The weekly grid the timetable generator places classes on. A lab takes
+  # lab-slots periods back to back, so it never spans a gap such as lunch.
+  timetable:
+    days:      MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY
+    slots:     09:00-09:50, 10:00-10:50, 11:00-11:50, 12:00-12:50, 13:50-14:40, 14:40-15:30
+    lab-slots: 2
+    attempts:  40
+
   files:
     storage:
       endpoint:                  ${MINIO_ENDPOINT:http://localhost:9000}

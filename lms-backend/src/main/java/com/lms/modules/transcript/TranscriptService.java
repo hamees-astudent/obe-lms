@@ -41,6 +41,17 @@ public class TranscriptService {
     @Async
     @Transactional
     public void generateTranscriptsForSemester(UUID semesterId, UUID programId, String triggeredByEmail) {
+        generateTranscriptsForSemesterNow(semesterId, programId, triggeredByEmail);
+    }
+
+    /**
+     * Synchronous form of {@link #generateTranscriptsForSemester}, joining the
+     * caller's transaction. The demo-data seeder needs it: it generates
+     * semesters oldest first, and each cumulative GPA reads the transcripts of
+     * the semesters before it.
+     */
+    @Transactional
+    public void generateTranscriptsForSemesterNow(UUID semesterId, UUID programId, String triggeredByEmail) {
         log.info("Generating transcripts: semesterId={} programId={}", semesterId, programId);
 
         UUID generatedBy = dataRepo.findUserIdByEmail(triggeredByEmail)

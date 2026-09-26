@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { BookOpen, ClipboardCheck, FileText, Bell, ChevronRight, Users } from 'lucide-react';
 import api from '@/lib/api';
+import TodayClasses from '@/components/timetable/TodayClasses';
 import { useTeachingOfferings } from '@/lib/queries';
 import { useAuthStore } from '@/store/authStore';
 import Card, { CardHeader } from '@/components/ui/Card';
@@ -199,6 +200,8 @@ export default function TeacherDashboard() {
           )}
         </Card>
       </div>
+
+      <TodayClasses showProgram />
 
       {/* Quick actions */}
       <Card>

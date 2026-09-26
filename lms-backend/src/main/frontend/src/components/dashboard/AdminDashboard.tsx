@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Users, BookOpen, GraduationCap, Plus, Settings, ChevronRight, type LucideIcon } from 'lucide-react';
+import { Users, BookOpen, CalendarDays, GraduationCap, Plus, Settings, ChevronRight, type LucideIcon } from 'lucide-react';
 import api from '@/lib/api';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
@@ -213,9 +213,10 @@ export default function AdminDashboard() {
       {/* Quick actions */}
       <Card>
         <CardHeader title="Quick Actions" />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           {[
             { label: 'Manage Users', to: '/users', icon: Users, color: 'bg-blue-50 text-blue-600' },
+            { label: 'Timetable', to: '/timetable', icon: CalendarDays, color: 'bg-purple-50 text-purple-600' },
             { label: 'Courses', to: '/courses', icon: BookOpen, color: 'bg-indigo-50 text-indigo-600' },
             { label: 'Attendance', to: '/attendance', icon: GraduationCap, color: 'bg-green-50 text-green-600' },
             { label: 'Assessment', to: '/assessment', icon: Settings, color: 'bg-orange-50 text-orange-600' },

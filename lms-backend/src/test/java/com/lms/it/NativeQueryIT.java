@@ -7,6 +7,7 @@ import com.lms.modules.courses.ProgramSemesterCourseRepository;
 import com.lms.modules.enrollment.CohortRepository;
 import com.lms.modules.enrollment.EnrollmentRepository;
 import com.lms.modules.exams.ExamDataRepository;
+import com.lms.modules.transcript.TranscriptDataRepository;
 import com.lms.shared.OfferingStaff;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -21,6 +22,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({ExamDataRepository.class, OfferingStaff.class})
+@Import({ExamDataRepository.class, OfferingStaff.class, TranscriptDataRepository.class})
 @EnabledIfEnvironmentVariable(named = "LMS_IT_DB_URL", matches = ".+")
 class NativeQueryIT {
 
@@ -67,11 +69,12 @@ class NativeQueryIT {
     @Autowired ProgramSemesterCourseRepository offerings;
     @Autowired ExamDataRepository examData;
     @Autowired OfferingStaff offeringStaff;
+    @Autowired TranscriptDataRepository transcriptData;
 
     // teacher: teacher of record · assistant: course_assistants row
     // coTeacher: TEACHER course member · student: STUDENT member · outsider: none
     private UUID teacher, assistant, coTeacher, student, outsider;
-    private UUID psc, assignment, quiz;
+    private UUID program, course, psc, assignment, quiz;
 
     @BeforeEach
     void seed() {
@@ -81,14 +84,14 @@ class NativeQueryIT {
         student   = user("Sana Student", "STUDENT");
         outsider  = user("Omar Outsider", "TEACHER");
 
-        UUID program = insert("""
+        program = insert("""
                 INSERT INTO programs (name, code) VALUES ('BS Computer Science', ?) RETURNING id""",
                 "BSCS-" + UUID.randomUUID().toString().substring(0, 6));
         UUID semester = insert("""
                 INSERT INTO semesters (program_id, name, start_date, end_date)
                 VALUES (?, 'Fall 2026', ?, ?) RETURNING id""",
                 program, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 12, 31));
-        UUID course = insert("""
+        course = insert("""
                 INSERT INTO courses (code, name, credit_hours) VALUES (?, 'Operating Systems', 3) RETURNING id""",
                 "CS-" + UUID.randomUUID().toString().substring(0, 6));
         psc = insert("""
@@ -250,6 +253,23 @@ class NativeQueryIT {
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> jdbc.update("INSERT INTO cohorts (name) VALUES ('SECTION A')"))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    // ── Transcripts ──────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("PLO mappings are found for a list of CLO ids (uuid IN list)")
+    void ploMappingsByCloIds() {
+        UUID clo = insert("""
+                INSERT INTO clos (course_id, code, title, order_index) VALUES (?, 'CLO-1', 'Explain', 1) RETURNING id""",
+                course);
+        UUID plo = insert("""
+                INSERT INTO plos (program_id, code, title, order_index) VALUES (?, 'PLO-2', 'Knowledge', 1) RETURNING id""",
+                program);
+        jdbc.update("INSERT INTO clo_plo_mappings (clo_id, plo_id) VALUES (?, ?)", clo, plo);
+
+        assertThat(transcriptData.findPloMappingsByCloIds(List.of(clo)))
+                .containsExactly(new TranscriptDataRepository.PloRow(clo, plo, "PLO-2", "Knowledge"));
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────

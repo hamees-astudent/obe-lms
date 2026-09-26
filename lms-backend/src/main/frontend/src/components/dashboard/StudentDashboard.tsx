@@ -9,6 +9,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import api from '@/lib/api';
+import TodayClasses from '@/components/timetable/TodayClasses';
 import { useAuthStore } from '@/store/authStore';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
@@ -313,6 +314,8 @@ export default function StudentDashboard() {
           </Card>
         </div>
       </div>
+
+      <TodayClasses />
 
       {/* Quick actions */}
       <Card>

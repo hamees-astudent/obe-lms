@@ -338,7 +338,7 @@ public class TranscriptDataRepository {
                 WHERE  cpm.clo_id IN (:cloIds)
                 """;
         MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("cloIds", cloIds.stream().map(UUID::toString).toList());
+                .addValue("cloIds", cloIds);
         return jdbc.query(sql, params,
                 (rs, i) -> new PloRow(
                         UUID.fromString(rs.getString("clo_id")),

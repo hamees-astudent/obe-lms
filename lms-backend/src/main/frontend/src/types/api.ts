@@ -280,6 +280,81 @@ export interface CohortEnrollmentResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Timetable — rooms and the current term's weekly classes
+// ---------------------------------------------------------------------------
+export type SessionKind = 'LECTURE' | 'LAB';
+
+export interface RoomResponse {
+  id: UUID;
+  name: string;
+  building?: string;
+  capacity: number;
+  kind: SessionKind;
+  active: boolean;
+  /** Weekly class meetings the timetable has put in this room. */
+  weeklyClasses: number;
+}
+
+export interface RoomRequest {
+  name: string;
+  building?: string;
+  capacity: number;
+  kind: SessionKind;
+  active: boolean;
+}
+
+export interface TimetableGridResponse {
+  /** `dayOfWeek` is ISO: 1 = Monday. */
+  days: { dayOfWeek: number; name: string }[];
+  /** Times as "HH:mm:ss". */
+  slots: { index: number; start: string; end: string }[];
+  labSlots: number;
+}
+
+export interface TimetableEntryResponse {
+  id: UUID;
+  pscId: UUID;
+  courseCode: string;
+  courseName: string;
+  programId: UUID;
+  programName: string;
+  semesterName: string;
+  teacherId: UUID;
+  teacherName: string;
+  roomId: UUID;
+  roomName: string;
+  kind: SessionKind;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  students: number;
+  /** Cohorts with members in this class; filled in the admin view only. */
+  cohortIds: UUID[];
+}
+
+export interface UnscheduledOfferingResponse {
+  pscId: UUID;
+  courseCode: string;
+  courseName: string;
+  programName: string;
+  teacherName: string;
+  students: number;
+  /** Weekly meetings not yet placed. */
+  missing: SessionKind[];
+  /** Why the generator could not place them; absent if it has not run since. */
+  reason?: string;
+}
+
+export interface TimetableResponse {
+  grid: TimetableGridResponse;
+  entries: TimetableEntryResponse[];
+  unscheduled: UnscheduledOfferingResponse[];
+  offerings: number;
+  sessionsRequired: number;
+  sessionsPlaced: number;
+}
+
+// ---------------------------------------------------------------------------
 // Courses, CLOs, Materials
 // ---------------------------------------------------------------------------
 export interface CourseSummaryResponse {

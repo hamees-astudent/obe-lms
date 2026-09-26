@@ -1,0 +1,428 @@
+# Demo MCQ bank, read by com.lms.seed.SeedCatalog.
+# course code | question | correct answer | wrong answer | wrong answer | wrong answer
+# Six questions per course: quiz N uses questions 2N-1 and 2N. Options are shuffled when seeded.
+
+CS-101|Which data type is best suited to store the value 3.75 in C++?|double|int|char|bool
+CS-101|What is the output of: int x = 7 / 2; cout << x;|3|3.5|4|Compilation error
+CS-101|Which loop is guaranteed to execute its body at least once?|do-while|for|while|None of these
+CS-101|What does the break statement do inside a loop?|Exits the loop immediately|Skips to the next iteration|Terminates the program|Restarts the loop
+CS-101|What is the index of the first element of an array in C++?|0|1|-1|It depends on the compiler
+CS-101|Which keyword is used to return a value from a function?|return|break|exit|yield
+CS-103|Which component is known as the brain of the computer?|CPU|RAM|Hard disk|Monitor
+CS-103|Which of the following is volatile memory?|RAM|ROM|SSD|Flash drive
+CS-103|What does URL stand for?|Uniform Resource Locator|Universal Resource Link|Unified Routing Locator|Uniform Remote Link
+CS-103|Which of these is an operating system?|Windows 11|Microsoft Word|Google Chrome|Adobe Photoshop
+CS-103|Which spreadsheet function adds a range of cells?|SUM|COUNT|AVERAGE|MAX
+CS-103|Phishing is best described as|Tricking users into revealing sensitive information|A type of computer hardware|A method of compressing files|A backup strategy
+MT-101|What is the derivative of x^3?|3x^2|x^2|3x|x^4/4
+MT-101|What is the limit of (sin x)/x as x approaches 0?|1|0|Infinity|Does not exist
+MT-101|What is the integral of 1/x dx?|ln(abs(x)) + C|x^2/2 + C|-1/x^2 + C|e^x + C
+MT-101|The derivative of a function at a point gives the|Slope of the tangent line|Area under the curve|Y-intercept|Average value
+MT-101|What is the derivative of sin x?|cos x|-cos x|tan x|-sin x
+MT-101|The equation x^2 + y^2 = 25 represents a|Circle|Parabola|Hyperbola|Straight line
+HU-101|Choose the correct sentence.|She has finished her homework.|She have finished her homework.|She has finish her homework.|She finished her homework yesterday already has.
+HU-101|Which word is a synonym of "rapid"?|Quick|Slow|Heavy|Calm
+HU-101|Identify the adverb: "He answered the question confidently."|confidently|answered|question|He
+HU-101|Which punctuation mark ends a question?|Question mark|Full stop|Comma|Semicolon
+HU-101|Choose the correct form: "If I ___ you, I would apologise."|were|was being|am|be
+HU-101|The main idea of a paragraph is usually stated in the|Topic sentence|Concluding sentence only|Title of the book|Footnote
+HU-103|How many pillars of Islam are there?|Five|Four|Six|Seven
+HU-103|In which city was the Holy Prophet (PBUH) born?|Makkah|Madinah|Taif|Jerusalem
+HU-103|The migration of the Holy Prophet (PBUH) to Madinah is called|Hijrah|Hajj|Zakat|Jihad
+HU-103|Which month is the month of fasting?|Ramadan|Shawwal|Muharram|Rajab
+HU-103|The Last Sermon of the Holy Prophet (PBUH) was delivered at|Mount Arafat|Mount Uhud|Masjid Quba|Badr
+HU-103|Zakat is primarily an act of|Charity to those in need|Fasting|Pilgrimage|Prayer
+CS-102|Which OOP concept hides internal details and exposes only necessary features?|Encapsulation|Inheritance|Polymorphism|Recursion
+CS-102|A constructor in C++ has the same name as the|Class|Object|Header file|Main function
+CS-102|Which keyword makes a member function overridable at run time?|virtual|static|const|inline
+CS-102|Inheritance models which kind of relationship?|is-a|has-a|uses-a|part-of
+CS-102|Which access specifier makes members accessible only inside the class?|private|public|protected|friend
+CS-102|Function templates in C++ are used to achieve|Generic programming|Multiple inheritance|Exception handling|File input and output
+CS-104|What is the binary equivalent of decimal 10?|1010|1100|1001|0110
+CS-104|Which gate outputs 1 only when all inputs are 1?|AND|OR|XOR|NOR
+CS-104|Which gates are known as universal gates?|NAND and NOR|AND and OR|XOR and XNOR|NOT and AND
+CS-104|A half adder produces which outputs?|Sum and carry|Sum and borrow|Difference and carry|Only sum
+CS-104|A flip-flop stores how many bits?|1|2|4|8
+CS-104|A multiplexer with 4 inputs needs how many select lines?|2|1|3|4
+CS-106|The contrapositive of "if p then q" is|if not q then not p|if q then p|if not p then not q|p and not q
+CS-106|How many subsets does a set with 3 elements have?|8|6|3|9
+CS-106|A relation that is reflexive, symmetric and transitive is called|An equivalence relation|A partial order|A function|A total order
+CS-106|In how many ways can 5 distinct books be arranged on a shelf?|120|25|60|5
+CS-106|The sum of degrees of all vertices in an undirected graph equals|Twice the number of edges|The number of edges|The number of vertices|Twice the number of vertices
+CS-106|Which proof technique proves a base case and an inductive step?|Mathematical induction|Proof by contradiction|Direct proof|Proof by cases
+HU-102|The thesis statement of an essay usually appears in the|Introduction|Conclusion only|Bibliography|Title page
+HU-102|Using another author's words without credit is called|Plagiarism|Paraphrasing|Summarising|Citing
+HU-102|Which of these is a common citation style?|APA|HTML|UML|ASCII
+HU-102|Words such as "however" and "therefore" are called|Transition words|Nouns|Articles|Prepositions
+HU-102|Revising a draft mainly focuses on|Content and organisation|Only spelling|Only font size|Page numbering
+HU-102|An expository essay primarily aims to|Explain or inform|Entertain with fiction|Persuade by emotion only|Describe a personal dream
+NS-101|The SI unit of electric charge is the|Coulomb|Volt|Ampere|Ohm
+NS-101|Ohm's law states that V equals|IR|I/R|R/I|I^2 R
+NS-101|Two resistors of 4 ohms each in series have a total resistance of|8 ohms|2 ohms|4 ohms|16 ohms
+NS-101|The majority charge carriers in an n-type semiconductor are|Electrons|Holes|Protons|Neutrons
+NS-101|A diode allows current to flow|Mainly in one direction|Equally in both directions|Only in alternating circuits|Never
+NS-101|The unit of magnetic field strength is the|Tesla|Joule|Watt|Henry
+
+CS-201|Which data structure follows the LIFO principle?|Stack|Queue|Array|Linked list
+CS-201|What is the worst-case time complexity of binary search?|O(log n)|O(n)|O(n log n)|O(1)
+CS-201|Which traversal of a binary search tree gives keys in sorted order?|Inorder|Preorder|Postorder|Level order
+CS-201|Which data structure is used to implement BFS?|Queue|Stack|Heap|Hash table
+CS-201|What is the average time complexity of lookup in a hash table?|O(1)|O(log n)|O(n)|O(n^2)
+CS-201|Which sorting algorithm has O(n log n) worst-case time?|Merge sort|Quick sort|Bubble sort|Insertion sort
+CS-203|Which register holds the address of the next instruction?|Program counter|Accumulator|Stack pointer|Base register
+CS-203|In x86 assembly, MOV AX, 5 uses which addressing mode?|Immediate|Direct|Indirect|Indexed
+CS-203|Which instruction transfers control to a procedure?|CALL|JMP|RET|PUSH
+CS-203|An interrupt is|A signal that makes the processor suspend normal execution|A type of memory|An assembler directive|A loop instruction
+CS-203|The ALU performs|Arithmetic and logic operations|Memory allocation|Instruction fetching only|Disk scheduling
+CS-203|Which flag is set when the result of an operation is zero?|Zero flag|Carry flag|Sign flag|Overflow flag
+MT-201|A system of linear equations with no solution is called|Inconsistent|Homogeneous|Consistent|Dependent
+MT-201|The determinant of the identity matrix is|1|0|-1|Its order
+MT-201|A matrix is invertible if its determinant is|Non-zero|Zero|Negative|Equal to one
+MT-201|If Av = λv for a non-zero vector v, then λ is called an|Eigenvalue|Eigenvector|Determinant|Pivot
+MT-201|The rank of a matrix is the number of|Linearly independent rows|Rows|Zero rows|Diagonal entries
+MT-201|Which method solves linear systems by row reduction?|Gaussian elimination|Newton's method|Simpson's rule|Bisection
+SE-201|Which process model develops software in fixed sequential phases?|Waterfall|Scrum|Spiral|Extreme Programming
+SE-201|A requirement such as "the system shall respond within 2 seconds" is|Non-functional|Functional|Domain|User story
+SE-201|Which UML diagram shows the interactions between actors and the system?|Use case diagram|Class diagram|Deployment diagram|Component diagram
+SE-201|Testing individual modules in isolation is called|Unit testing|System testing|Acceptance testing|Regression testing
+SE-201|Which model explicitly focuses on risk analysis in each iteration?|Spiral|Waterfall|V-model|Big bang
+SE-201|Verification answers the question|Are we building the product right?|Are we building the right product?|Is the customer happy?|Is the project on budget?
+HU-201|Pakistan came into being on|14 August 1947|23 March 1940|25 December 1947|23 March 1956
+HU-201|The Lahore Resolution was passed in|1940|1930|1947|1956
+HU-201|The current Constitution of Pakistan was adopted in|1973|1956|1962|1985
+HU-201|Who presented the idea of a separate homeland in the Allahabad Address of 1930?|Allama Muhammad Iqbal|Liaquat Ali Khan|Sir Syed Ahmad Khan|Chaudhry Rehmat Ali
+HU-201|The Parliament of Pakistan is called|Majlis-e-Shoora|National Assembly only|Senate only|Provincial Assembly
+HU-201|The Objectives Resolution was passed in|1949|1947|1956|1973
+CS-202|Which SQL command removes rows from a table?|DELETE|DROP|REMOVE|ERASE
+CS-202|A primary key must be|Unique and not null|Unique but may be null|Duplicated across rows|A foreign key
+CS-202|Which normal form removes partial dependencies?|Second normal form|First normal form|Third normal form|BCNF
+CS-202|The ACID property that ensures all or none of a transaction is applied is|Atomicity|Consistency|Isolation|Durability
+CS-202|Which join returns only rows with matching values in both tables?|INNER JOIN|LEFT JOIN|FULL OUTER JOIN|CROSS JOIN
+CS-202|In an ER diagram, a relationship between entities is shown as a|Diamond|Rectangle|Oval|Double line
+CS-204|Which scheduling algorithm can cause starvation of long processes?|Shortest Job First|Round Robin|First Come First Served|Fair share
+CS-204|A deadlock requires mutual exclusion, hold and wait, no preemption and|Circular wait|Starvation|Paging|Thrashing
+CS-204|Which mechanism is used to solve the critical section problem?|Semaphore|Page table|TLB|Interrupt vector
+CS-204|Excessive paging that degrades performance is called|Thrashing|Fragmentation|Swapping|Spooling
+CS-204|The fork() system call is used to|Create a new process|Terminate a process|Allocate memory|Open a file
+CS-204|Threads of the same process share their|Address space|Stack|Program counter|Registers
+CS-206|Merge sort is an example of which design paradigm?|Divide and conquer|Greedy|Dynamic programming|Backtracking
+CS-206|Dijkstra's algorithm follows which paradigm?|Greedy|Divide and conquer|Brute force|Randomised
+CS-206|The 0/1 knapsack problem is typically solved optimally with|Dynamic programming|Greedy choice|Binary search|Hashing
+CS-206|The recurrence T(n) = 2T(n/2) + n solves to|O(n log n)|O(n)|O(n^2)|O(log n)
+CS-206|A problem is NP-complete if it is in NP and|Every problem in NP reduces to it|It can be solved in linear time|It has no solution|It is undecidable
+CS-206|Kruskal's algorithm finds a|Minimum spanning tree|Shortest path|Maximum flow|Topological order
+MT-202|The mean of 2, 4, 6, 8 and 10 is|6|5|8|30
+MT-202|The probability of getting a head when tossing a fair coin is|0.5|1|0.25|0
+MT-202|Which distribution is bell-shaped and symmetric?|Normal|Binomial|Poisson|Exponential
+MT-202|The measure of spread equal to the square root of variance is the|Standard deviation|Mean|Median|Mode
+MT-202|Rejecting a true null hypothesis is a|Type I error|Type II error|Sampling error|Standard error
+MT-202|If A and B are independent, P(A and B) equals|P(A) x P(B)|P(A) + P(B)|P(A) - P(B)|P(A) / P(B)
+HU-202|Which part of a report summarises the whole document?|Executive summary|Appendix|Bibliography|Table of contents
+HU-202|A memo is mainly used for|Internal communication within an organisation|Academic research|Advertising products|Personal diaries
+HU-202|A good CV should be|Concise and relevant|As long as possible|Handwritten|Written in the third person only
+HU-202|The purpose of a proposal is to|Persuade the reader to approve a plan|Entertain the reader|Record meeting minutes|List references
+HU-202|Which is the most appropriate email subject line?|Request for meeting on project timeline|Hi|Urgent!!!|No subject
+HU-202|Technical writing should be|Clear and precise|Full of jargon|Emotional|Ambiguous
+CS-301|How many layers does the OSI model have?|7|5|4|6
+CS-301|Which protocol provides reliable, connection-oriented delivery?|TCP|UDP|IP|ICMP
+CS-301|Which protocol translates domain names into IP addresses?|DNS|DHCP|ARP|FTP
+CS-301|How many usable host addresses does a /24 subnet have?|254|256|255|252
+CS-301|Which device forwards packets between different networks?|Router|Switch|Hub|Repeater
+CS-301|The default port number for HTTPS is|443|80|21|25
+CS-303|Which machine recognises regular languages?|Finite automaton|Pushdown automaton|Turing machine|Linear bounded automaton
+CS-303|The language of balanced parentheses is|Context-free but not regular|Regular|Not recursively enumerable|Finite
+CS-303|A pushdown automaton is a finite automaton with a|Stack|Queue|Tape|Second tape head
+CS-303|The pumping lemma is used to prove that a language is|Not regular|Regular|Finite|Decidable
+CS-303|Which problem is undecidable?|The halting problem|Checking if a DFA accepts a string|Sorting a list|Parsing a regular expression
+CS-303|The regular expression (a+b)* describes|All strings over {a, b}|Only the empty string|Strings with equal a's and b's|Only strings starting with a
+AI-301|Which search algorithm uses a heuristic plus the path cost so far?|A* search|Breadth-first search|Depth-first search|Uniform cost search
+AI-301|An admissible heuristic|Never overestimates the true cost|Always overestimates the cost|Is always zero|Ignores the goal
+AI-301|The minimax algorithm is used in|Two-player adversarial games|Sorting|Image recognition|Database indexing
+AI-301|Alpha-beta pruning improves minimax by|Skipping branches that cannot affect the decision|Adding randomness|Using more memory|Changing the evaluation function
+AI-301|An agent that acts only on the current percept is a|Simple reflex agent|Goal-based agent|Utility-based agent|Learning agent
+AI-301|Bayes' theorem is used for|Updating probabilities with new evidence|Sorting search nodes|Pruning game trees|Encoding rules in first-order logic
+CS-305|Which HTML tag creates a hyperlink?|<a>|<link>|<href>|<p>
+CS-305|CSS is mainly used for|Styling web pages|Storing data|Server-side logic|Compiling code
+CS-305|Which HTTP method is typically used to submit form data that creates a resource?|POST|GET|HEAD|OPTIONS
+CS-305|JavaScript code in the browser runs on the|Client side|Database server|DNS server|Operating system kernel
+CS-305|SQL injection can be prevented by using|Parameterised queries|Longer URLs|More CSS|Inline scripts
+CS-305|An HTTP status code of 404 means|Not found|OK|Server error|Redirect
+MT-301|The bisection method is used to find|Roots of equations|Derivatives|Eigenvalues|Integrals only
+MT-301|Newton-Raphson iteration requires the function's|Derivative|Integral|Inverse|Transpose
+MT-301|Simpson's rule is used for|Numerical integration|Root finding|Matrix inversion|Sorting
+MT-301|Round-off error is caused by|Finite precision arithmetic|Wrong formulas|Missing data|Slow computers
+MT-301|Lagrange's formula is used for|Interpolation|Differentiation|Root finding|Optimisation
+MT-301|Gauss-Seidel is an iterative method for|Solving linear systems|Finding limits|Plotting graphs|Integrating functions
+CS-302|Which phase of a compiler produces tokens?|Lexical analysis|Syntax analysis|Code generation|Optimisation
+CS-302|A parser checks the program against the language's|Grammar|Symbol table only|Machine code|Linker script
+CS-302|Which parsing technique builds the parse tree from the leaves up?|Bottom-up parsing|Top-down parsing|Recursive descent|Predictive parsing
+CS-302|Three-address code is a form of|Intermediate representation|Source code|Object code|Regular expression
+CS-302|Type checking happens during|Semantic analysis|Lexical analysis|Linking|Loading
+CS-302|Constant folding is an example of|Code optimisation|Lexical analysis|Parsing|Error recovery
+CS-304|OpenMP is mainly used for|Shared-memory parallel programming|Distributed databases|Web development|Network routing
+CS-304|MPI programs communicate by|Passing messages|Sharing a global heap|Writing to CSS files|Using interrupts only
+CS-304|Amdahl's law describes the|Limit on speed-up from the serial part of a program|Growth of transistor counts|Cost of memory|Speed of networks
+CS-304|A race condition occurs when|Threads access shared data without proper synchronisation|A program runs too fast|Two programs share a name|A network is congested
+CS-304|Speed-up is defined as|Serial time divided by parallel time|Parallel time divided by serial time|Number of processors|Total memory used
+CS-304|In Flynn's taxonomy, GPUs are best described as|SIMD|SISD|MISD|MIMD only
+CS-306|Which security goal ensures data is not disclosed to unauthorised parties?|Confidentiality|Integrity|Availability|Non-repudiation
+CS-306|AES is an example of|Symmetric encryption|Asymmetric encryption|Hashing|Digital signature
+CS-306|In RSA, a message encrypted with the public key is decrypted with the|Private key|Same public key|Session key|Hash value
+CS-306|Which attack floods a server to make it unavailable?|Denial of service|Phishing|SQL injection|Man-in-the-middle
+CS-306|A hash function should be|One-way and collision resistant|Reversible|Encrypted with a key|Random each time
+CS-306|Two-factor authentication combines|Two different types of credentials|Two passwords|Two usernames|Two browsers
+CS-308|Which method evaluates a UI against established usability principles?|Heuristic evaluation|Load testing|Unit testing|Code review
+CS-308|Fitts's law predicts the time needed to|Point to a target|Read a page|Learn a language|Load a website
+CS-308|A low-fidelity prototype is typically made with|Paper sketches|Production code|A database|A compiler
+CS-308|User-centred design focuses on|Users' needs and context|Developers' preferences|Hardware cost|Code size
+CS-308|Consistency in interface design means|Similar actions work in similar ways|Every screen looks different|Using many fonts|Hiding navigation
+CS-308|A persona is|A fictional representative user|A real customer contract|A UI widget|A database table
+HU-302|A business model canvas has how many building blocks?|Nine|Five|Seven|Twelve
+HU-302|A minimum viable product is|The simplest version that tests a business idea|The final polished product|A marketing slogan|A legal document
+HU-302|Funding from an investor in exchange for equity is called|Venture capital|A salary|A tax rebate|A grant loan
+HU-302|The pitch given to investors in about a minute is called an|Elevator pitch|Annual report|Audit|Invoice
+HU-302|Market research helps an entrepreneur to|Understand customer needs|Avoid paying taxes|Write code faster|Hire lawyers
+HU-302|Which organisation runs the National Incubation Centres in Pakistan?|Ignite (National Technology Fund)|PTA|NADRA|SBP
+AI-302|Linear regression predicts a|Continuous value|Class label only|Cluster id|Probability distribution only
+AI-302|K-means is an example of|Unsupervised learning|Supervised learning|Reinforcement learning|Semi-supervised learning
+AI-302|Overfitting means the model|Performs well on training data but poorly on new data|Performs poorly on training data|Has too few parameters|Is always accurate
+AI-302|Cross-validation is used to|Estimate model performance on unseen data|Increase dataset size|Remove features|Speed up training
+AI-302|Precision is defined as|TP / (TP + FP)|TP / (TP + FN)|TN / (TN + FP)|(TP + TN) / total
+AI-302|Random forest is an ensemble of|Decision trees|Neural networks|Linear regressions|K-means models
+CS-401|Which cloud model provides virtual machines to customers?|IaaS|SaaS|PaaS|FaaS
+CS-401|Gmail is an example of|SaaS|IaaS|PaaS|On-premise software
+CS-401|Docker packages applications into|Containers|Virtual disks|Hypervisors|Firmware
+CS-401|The ability to add resources automatically as load grows is called|Elasticity|Latency|Redundancy|Virtualisation
+CS-401|A hypervisor is used to|Run multiple virtual machines on one host|Store objects|Route network traffic|Encrypt data
+CS-401|Amazon S3 is an example of|Object storage|A relational database|A load balancer|A container registry
+CS-403|Android apps are primarily developed in|Kotlin or Java|Swift|C#|PHP
+CS-403|An Activity in Android represents|A single screen with a user interface|A background database|A network request|A device sensor
+CS-403|Flutter applications are written in|Dart|Kotlin|Swift|Python
+CS-403|Which file declares the components and permissions of an Android app?|AndroidManifest.xml|build.gradle|strings.xml|MainActivity.kt
+CS-403|SharedPreferences is used to store|Small key-value data|Large media files|Relational tables|Source code
+CS-403|Apps are published for Android users through|Google Play Store|App Store Connect only|Microsoft Store|Docker Hub
+HU-401|The main cyber crime law of Pakistan is|PECA 2016|PPC 1860|Companies Act 2017|RTI Act 2017
+HU-401|Copyright protects|Original creative works such as software code|Business names|Physical inventions only|Ideas without expression
+HU-401|Which organisation publishes a well-known code of ethics for computing professionals?|ACM|FIFA|WHO|OPEC
+HU-401|Whistle-blowing refers to|Reporting unethical practices in an organisation|Leaking passwords for fun|Ignoring defects|Advertising a product
+HU-401|A patent protects|Inventions|Poems|Trademarks|Domain names
+HU-401|Professional competence requires a practitioner to|Work only within their areas of competence|Accept every task|Hide mistakes|Avoid documentation
+CS-402|The process of converting geometric primitives into pixels is|Rasterisation|Compilation|Tessellation only|Normalisation
+CS-402|Which transformation changes the size of an object?|Scaling|Translation|Rotation|Reflection
+CS-402|Homogeneous coordinates allow translation to be expressed as a|Matrix multiplication|Division|Square root|Logarithm
+CS-402|The Z-buffer algorithm is used for|Hidden surface removal|Colour mixing|Line clipping|Texture compression
+CS-402|Bresenham's algorithm is used to draw|Lines|Curves only|3D meshes|Shadows
+CS-402|In the Phong model, specular reflection produces|Shiny highlights|Ambient colour|Shadows|Transparency
+CS-404|The "3 Vs" of big data are volume, velocity and|Variety|Visibility|Validity|Vulnerability
+CS-404|HDFS stands for|Hadoop Distributed File System|High Density File Storage|Hybrid Data Format System|Hosted Data File Service
+CS-404|In MapReduce, intermediate key-value pairs are aggregated by the|Reduce function|Map function|Combiner only|Name node
+CS-404|Apache Spark speeds up processing mainly through|In-memory computation|Larger disks|Single-threaded execution|Manual caching in files
+CS-404|A data lake stores|Raw data in its native format|Only aggregated reports|Only relational tables|Only images
+CS-404|Which Spark abstraction is an immutable distributed collection?|RDD|DAG scheduler|Executor|Driver
+CS-406|Bitcoin uses which consensus mechanism?|Proof of Work|Proof of Stake|Proof of Authority|Round Robin
+CS-406|A block references the previous block using its|Hash|Timestamp only|Miner's name|Block size
+CS-406|Smart contracts on Ethereum are commonly written in|Solidity|Java|Swift|COBOL
+CS-406|The fee paid to execute a transaction on Ethereum is called|Gas|Coin|Token|Stake
+CS-406|A Merkle tree is used to|Efficiently verify transactions in a block|Encrypt wallets|Mine new coins|Store user passwords
+CS-406|Blockchain is often described as an|Immutable distributed ledger|Encrypted spreadsheet on one server|Relational database|Peer-to-peer chat system
+HU-402|Civic engagement means|Participating in activities that improve the community|Avoiding public affairs|Only paying taxes|Working abroad
+HU-402|Which right allows citizens to express opinions?|Freedom of speech|Right to property|Right to education|Freedom of trade
+HU-402|Voting in elections is an example of|Civic responsibility|Economic activity|Criminal activity|Religious duty
+HU-402|Volunteering at a local clinic is a form of|Community service|Paid employment|Tax payment|Business investment
+HU-402|Local government in Pakistan is established under|Provincial law|UN treaties|Private companies|Municipal courts only
+HU-402|A needs assessment in a community project identifies|The problems a community faces|Project profits|Tax rates|Election results
+
+SE-202|Which technique gathers requirements by observing users at work?|Ethnography|Prototyping|Code review|Load testing
+SE-202|SRS stands for|Software Requirements Specification|System Review Summary|Software Release Schedule|Standard Risk Statement
+SE-202|"The system shall allow users to reset their password" is a|Functional requirement|Non-functional requirement|Design constraint|Test case
+SE-202|MoSCoW is a technique for|Prioritising requirements|Estimating cost|Testing code|Designing databases
+SE-202|Requirements traceability links requirements to|Design, code and tests|Only customers|Only budgets|Only hardware
+SE-202|Validating requirements checks that they|Reflect what stakeholders actually need|Compile without errors|Are written in UML|Are cheap to implement
+SE-301|Low coupling and high cohesion lead to|More maintainable designs|Slower programs|Larger classes|More global variables
+SE-301|The Singleton pattern ensures that a class has|Only one instance|No instances|Many subclasses|No methods
+SE-301|Which pattern notifies dependents when an object changes state?|Observer|Factory|Adapter|Decorator
+SE-301|MVC separates an application into model, view and|Controller|Container|Compiler|Cache
+SE-301|A microservices architecture structures an application as|Small independently deployable services|One large executable|A single database table|A set of stored procedures
+SE-301|The "S" in the SOLID principles stands for|Single responsibility|Simple design|Software reuse|Strong typing
+SE-303|Git is an example of a|Distributed version control system|Compiler|Database|Test framework
+SE-303|Refactoring changes the|Internal structure without changing behaviour|External behaviour|Requirements|Hardware
+SE-303|Continuous integration means|Merging and testing code changes frequently|Releasing once a year|Writing code without tests|Working without version control
+SE-303|A unit test should be|Fast and independent|Dependent on other tests|Run only in production|Written after release
+SE-303|Code smells indicate|Possible design problems|Syntax errors|Compiler bugs|Hardware faults
+SE-303|Maven and Gradle are|Build automation tools|Version control systems|IDEs|Databases
+SE-302|Black-box testing is based on the|Specification|Source code|Compiler output|Database schema
+SE-302|Boundary value analysis tests values at the|Edges of input ranges|Middle of ranges only|Random points only|Error logs
+SE-302|Statement coverage is a|White-box testing criterion|Black-box technique|Usability metric|Project schedule
+SE-302|Regression testing checks that|Changes have not broken existing functionality|New hardware works|Requirements are complete|The UI looks good
+SE-302|ISO/IEC 25010 is a standard for|Software product quality|Network protocols|Project costing|Programming languages
+SE-302|Cyclomatic complexity measures the|Number of independent paths in code|Lines of code|Number of classes|Memory usage
+SE-304|COCOMO is a model for estimating|Software effort and cost|Network throughput|Test coverage|User satisfaction
+SE-304|The longest path of dependent tasks in a project schedule is the|Critical path|Slack path|Gantt chart|Baseline
+SE-304|In Scrum, a fixed-length iteration is called a|Sprint|Milestone|Phase|Release train
+SE-304|Risk exposure is calculated as|Probability x impact|Cost + time|Effort / size|Scope x quality
+SE-304|A work breakdown structure|Decomposes project work into smaller parts|Lists test cases|Shows network topology|Stores source code
+SE-304|Earned value management is used to|Track project performance against the plan|Write requirements|Design UIs|Deploy software
+SE-401|Most software maintenance effort is typically spent on|Adaptive and perfective maintenance|Initial coding|Hardware repair|Requirements elicitation
+SE-401|Reverse engineering produces|Higher-level representations from existing code|New hardware|Source code from requirements|Test data only
+SE-401|A legacy system is|An old system still critical to the business|A newly built prototype|A cloud-native app|An open-source library
+SE-401|Lehman's laws describe|Software evolution|Network routing|Database normalisation|Compiler design
+SE-401|The strangler fig pattern is used to|Incrementally replace a legacy system|Encrypt data|Optimise SQL queries|Design user interfaces
+SE-401|Restructuring changes code to improve|Maintainability without changing function|The user interface only|Hardware performance|Licensing
+SE-403|Formal methods use mathematics to|Specify and verify software|Draw user interfaces|Estimate cost|Manage teams
+SE-403|Z is a|Formal specification notation|Programming language for games|Database|Testing tool
+SE-403|Model checking verifies properties by|Exploring the states of a model|Reading code comments|Running user surveys|Measuring lines of code
+SE-403|An invariant is a property that|Always holds|Never holds|Holds only at start-up|Depends on the user
+SE-403|Formal methods are especially valuable in|Safety-critical systems|Simple static websites|Marketing documents|Spreadsheets
+SE-403|A precondition describes what must be true|Before an operation executes|After an operation executes|Only when the program crashes|Only at compile time
+SE-402|Which is one of the four values of the Agile Manifesto?|Working software over comprehensive documentation|Processes over individuals|Contract negotiation over collaboration|Following a plan over responding to change
+SE-402|In Scrum, the product backlog is owned by the|Product Owner|Scrum Master|Development team|Customer's lawyer
+SE-402|The daily Scrum is usually limited to|15 minutes|2 hours|1 day|5 seconds
+SE-402|Test-driven development writes|Tests before the code|Code before any design|Documentation first|Tests after release
+SE-402|Kanban limits|Work in progress|Team size|Code length|Test coverage
+SE-402|A user story typically follows the format|As a <role>, I want <goal> so that <benefit>|Given, When, Then only|Input, Process, Output|Who, What, Where
+SE-404|REST APIs typically exchange data in|JSON|Binary executables|Assembly code|CSV only
+SE-404|Which HTTP method is idempotent and used to update a resource completely?|PUT|POST|PATCH|CONNECT
+SE-404|A CDN improves web performance by|Serving content from locations close to users|Compressing the database|Removing JavaScript|Replacing HTTP
+SE-404|React is a|JavaScript library for building user interfaces|Relational database|Web server|Programming language
+SE-404|Cross-site scripting (XSS) is prevented by|Escaping untrusted output|Using larger servers|Disabling CSS|Using FTP
+SE-404|Stateless REST services store session state|On the client or in tokens|In server memory only|In the DNS|In CSS files
+
+AI-201|Which Python library provides n-dimensional arrays?|NumPy|Flask|Requests|Tkinter
+AI-201|A pandas DataFrame is|A two-dimensional labelled table|An image format|A neural network|A web server
+AI-201|Which Python data type is immutable?|Tuple|List|Dictionary|Set
+AI-201|Matplotlib is used for|Data visualisation|Web scraping|Database access|Encryption
+AI-201|In scikit-learn, a model is trained with the method|fit()|train_model()|learn()|run()
+AI-201|What does len([1, 2, 3]) return?|3|2|6|Error
+AI-303|First-order logic extends propositional logic with|Quantifiers and predicates|Probabilities only|Loops|Pixels
+AI-303|An ontology defines|Concepts and relationships in a domain|Neural network weights|Image filters|Sorting algorithms
+AI-303|Forward chaining reasons from|Known facts towards conclusions|Goals back to facts|Images to labels|Random guesses
+AI-303|A Bayesian network is a|Directed acyclic graph of random variables|Type of database|Search tree|Neural activation function
+AI-303|Expert systems store knowledge mainly as|Rules|Pixels|Waveforms|Emails
+AI-303|Semantic networks represent knowledge as|Nodes and labelled links|Pixels and colours|Tables only|Sound waves
+AI-304|Which operation detects edges in an image?|Sobel filtering|Histogram equalisation only|Colour inversion|Image resizing
+AI-304|CNN stands for|Convolutional Neural Network|Central Neural Node|Connected Network Normaliser|Computer Numeric Network
+AI-304|YOLO is a model for|Real-time object detection|Text translation|Speech recognition|Database indexing
+AI-304|Image segmentation assigns labels to|Each pixel or region|The whole image only|Each file name|Each camera
+AI-304|A grayscale image pixel usually has how many channels?|1|3|4|2
+AI-304|Max pooling in a CNN|Downsamples feature maps|Adds colour|Increases resolution|Normalises labels
+AI-306|Backpropagation computes|Gradients of the loss with respect to weights|The model's accuracy|The dataset size|The learning rate
+AI-306|Which activation function outputs max(0, x)?|ReLU|Sigmoid|Tanh|Softmax
+AI-306|Dropout is a technique for|Regularisation|Data collection|Model deployment|Tokenisation
+AI-306|RNNs are designed for|Sequential data|Tabular data only|Sorting|Image compression
+AI-306|The vanishing gradient problem is reduced by using|LSTM units|Larger images|More epochs only|Smaller datasets
+AI-306|Which optimiser adapts the learning rate for each parameter?|Adam|Plain gradient descent|Bubble sort|K-means
+AI-308|Tokenisation splits text into|Words or subword units|Images|Numbers only|Paragraph styles
+AI-308|Word2Vec produces|Dense word embeddings|Parse trees|Stop-word lists|Spelling corrections
+AI-308|Removing words such as "the" and "is" is called|Stop-word removal|Stemming|Lemmatisation|Parsing
+AI-308|The key mechanism in transformers is|Self-attention|Convolution only|Pooling|Recurrence only
+AI-308|Named entity recognition identifies|Names of people, places and organisations|Grammar mistakes|Sentence length|Font types
+AI-308|BERT is pre-trained using|Masked language modelling|Image classification|Reinforcement learning only|Clustering
+AI-401|An MDP is defined by states, actions, transitions and|Rewards|Pixels|Layers|Tokens
+AI-401|Q-learning learns the value of|State-action pairs|Images|Words|Clusters
+AI-401|The exploration-exploitation trade-off is often handled with|Epsilon-greedy selection|Batch normalisation|Stop-word removal|Max pooling
+AI-401|The discount factor gamma controls|The importance of future rewards|The learning rate|Batch size|Network depth
+AI-401|DQN combines Q-learning with|Deep neural networks|Decision trees|Genetic algorithms|K-means
+AI-401|The Bellman equation expresses a value in terms of|Immediate reward and future values|Only past rewards|The dataset size|The number of actions
+AI-403|Forward kinematics computes|End-effector position from joint angles|Joint angles from a target position|Battery life|Sensor noise
+AI-403|A LiDAR sensor measures|Distance using laser light|Temperature|Sound frequency|Humidity
+AI-403|ROS stands for|Robot Operating System|Remote Operation Server|Robotic Output Signal|Real-time Object Sensor
+AI-403|A PID controller combines proportional, integral and|Derivative terms|Random terms|Logarithmic terms|Constant terms only
+AI-403|A degree of freedom is|An independent way a robot can move|A type of battery|A sensor type|A programming language
+AI-403|The A* algorithm is used in robotics for|Path planning|Motor cooling|Image compression|Speech synthesis
+AI-402|GAN stands for|Generative Adversarial Network|Generalised Attention Network|Graph Analysis Node|Gradient Averaging Network
+AI-402|In a GAN, the discriminator tries to|Distinguish real data from generated data|Generate images|Compress data|Label clusters
+AI-402|Large language models are mainly based on the|Transformer architecture|Decision tree|K-means|Support vector machine
+AI-402|Providing a few examples inside a prompt is called|Few-shot prompting|Fine-tuning|Pre-training|Distillation
+AI-402|A confident but false statement produced by an LLM is called a|Hallucination|Gradient|Token|Embedding
+AI-402|LoRA is a technique for|Parameter-efficient fine-tuning|Data labelling|Image compression|Tokenisation
+AI-404|Genetic algorithms are inspired by|Natural selection|Human memory|Planetary motion|Chemical bonding
+AI-404|Crossover in a genetic algorithm|Combines parts of two parent solutions|Deletes the population|Sorts the solutions|Computes gradients
+AI-404|Mutation is used to|Maintain diversity in the population|Stop the algorithm|Evaluate fitness|Select parents deterministically
+AI-404|Particle swarm optimisation is inspired by|Flocking of birds|Growth of crystals|Ocean waves|Neurons
+AI-404|The fitness function|Measures the quality of a solution|Creates the initial population|Mutates solutions|Stores results
+AI-404|NSGA-II is used for|Multi-objective optimisation|Image recognition|Database indexing|Text translation
+
+CS-601|Amortised analysis gives the|Average cost per operation over a worst-case sequence|Best-case cost|Cost of one operation only|Memory usage
+CS-601|The Ford-Fulkerson method computes|Maximum flow|Minimum spanning trees|Shortest paths only|Sorted order
+CS-601|A randomised quicksort has expected running time|O(n log n)|O(n^2)|O(n)|O(log n)
+CS-601|An approximation ratio of 2 means the solution is at most|Twice the optimal|Half the optimal|Equal to the optimal|Ten times the optimal
+CS-601|The Master theorem solves recurrences of the form|T(n) = aT(n/b) + f(n)|T(n) = T(n-1) + 1 only|T(n) = n!|T(n) = 2^n
+CS-601|Bipartite matching can be reduced to|Maximum flow|Sorting|Hashing|Binary search
+CS-603|A microkernel moves most OS services into|User space|Hardware|The BIOS|The compiler
+CS-603|Lamport clocks provide|A logical ordering of events|Physical time synchronisation|Memory allocation|File compression
+CS-603|A type-1 hypervisor runs|Directly on the hardware|On top of a host OS|Inside a browser|Inside a container
+CS-603|Distributed shared memory gives processes|The illusion of a single shared address space|Faster disks|More CPUs|Encrypted files
+CS-603|The Byzantine generals problem concerns|Reaching agreement despite faulty nodes|Scheduling threads|Paging memory|Rendering graphics
+CS-603|Copy-on-write delays copying memory until|A process writes to it|The process starts|The system reboots|The disk is full
+CS-605|Pipelining improves|Instruction throughput|Single-instruction latency|Disk capacity|Screen resolution
+CS-605|A data hazard occurs when|An instruction depends on the result of a previous one|Two programs share a disk|The cache is empty|The clock stops
+CS-605|Cache performance is improved by exploiting|Locality of reference|Random access patterns|Larger fonts|Slower memory
+CS-605|GPUs are optimised for|Massively parallel throughput|Single-thread latency only|Disk storage|Network routing
+CS-605|Branch prediction reduces|Control hazards|Cache size|Power supply|Instruction set size
+CS-605|In a multiprocessor, cache coherence ensures|All caches see a consistent value of shared data|Caches are always empty|Only one CPU runs at a time|Memory is never shared
+CS-607|A literature review helps a researcher to|Identify gaps in existing work|Avoid reading papers|Collect salaries|Write code faster
+CS-607|A hypothesis is|A testable prediction|A final conclusion|A list of references|A research grant
+CS-607|Qualitative research typically uses|Interviews and observations|Only numerical experiments|Only simulations|Compilers
+CS-607|A sample that represents the population well is called|Representative|Biased|Random noise|Skewed
+CS-607|The HEC plagiarism policy requires theses to be checked with|Turnitin|Excel|Photoshop|GitHub
+CS-607|The independent variable in an experiment is the one that is|Manipulated by the researcher|Measured as the outcome|Held constant|Ignored
+CS-602|A language is decidable if a Turing machine|Halts on every input with the right answer|Accepts only finite strings|Never halts|Uses a stack
+CS-602|To show a problem is NP-hard we reduce|A known NP-hard problem to it|It to a problem in P|It to sorting|It to regular expressions
+CS-602|SAT was the first problem proven NP-complete by|Cook and Levin|Turing|Dijkstra|Knuth
+CS-602|The class P contains problems solvable in|Polynomial time|Exponential time only|Constant time only|Logarithmic space only
+CS-602|Rice's theorem states that non-trivial semantic properties of programs are|Undecidable|Decidable|Regular|In P
+CS-602|PSPACE contains problems solvable using|Polynomial space|Constant time|Linear time only|No memory
+CS-604|The CAP theorem involves consistency, availability and|Partition tolerance|Performance|Portability|Privacy
+CS-604|Paxos and Raft are|Consensus algorithms|Sorting algorithms|Encryption schemes|File systems
+CS-604|Eventual consistency guarantees that replicas|Converge if no new updates are made|Are always identical|Never synchronise|Are read-only
+CS-604|RPC stands for|Remote Procedure Call|Rapid Packet Control|Replicated Process Cluster|Reliable Protocol Channel
+CS-604|A vector clock is used to|Capture causality between events|Measure CPU speed|Encrypt messages|Balance load
+CS-604|Two-phase commit ensures|Atomic commitment across multiple nodes|Faster reads|Compression|Load balancing
+CS-606|A query optimiser chooses the|Most efficient execution plan|Database password|Table names|Backup schedule
+CS-606|MongoDB is an example of a|Document database|Relational database|Graph drawing tool|Spreadsheet
+CS-606|A star schema is used in|Data warehouses|Operating systems|Compilers|Networks
+CS-606|Horizontal fragmentation splits a table by|Rows|Columns|Indexes|Users
+CS-606|OLAP systems are designed for|Analytical queries|High-volume transaction entry|Web page styling|File compression
+CS-606|A B+ tree index keeps all records in its|Leaf nodes|Root node only|Internal nodes only|Separate log file
+AI-651|Kernel methods allow linear algorithms to learn|Non-linear decision boundaries|Only linear functions|Without data|Only images
+AI-651|Gradient boosting builds models|Sequentially, each correcting previous errors|In parallel without interaction|Using only one tree|Without a loss function
+AI-651|The EM algorithm is used for|Estimating parameters with latent variables|Sorting data|Encrypting models|Image resizing
+AI-651|An autoencoder learns|A compressed representation of the input|Class labels directly|A sorting order|A database index
+AI-651|The bias-variance trade-off describes|The balance between underfitting and overfitting|CPU versus GPU cost|Precision versus recall only|Batch size versus epochs
+AI-651|A Gaussian process defines a distribution over|Functions|Images only|Words|Graphs only
+CS-703|Software-defined networking separates the|Control plane from the data plane|Hardware from electricity|Users from applications|IP from Ethernet
+CS-703|OpenFlow is a protocol used in|SDN|Email|DNS|Wi-Fi authentication
+CS-703|Network throughput is measured in|Bits per second|Seconds|Hops|Packets per hop
+CS-703|A fat-tree topology is common in|Data centre networks|Bluetooth networks|Satellite links|Telephone exchanges
+CS-703|QUIC runs on top of|UDP|TCP|ICMP|ARP
+CS-703|Network function virtualisation runs network functions on|Commodity servers|Dedicated ASICs only|Mobile phones|Printers
+CS-705|Diffie-Hellman is used for|Key exchange|Hashing|Compression|Routing
+CS-705|An IDS that detects deviations from normal behaviour is|Anomaly-based|Signature-based|Firewall-based|Host-only
+CS-705|A zero-day vulnerability is|Unknown to the vendor with no patch available|Fixed on day zero|Harmless|A type of firewall
+CS-705|TLS provides|Secure communication over a network|File compression|Faster DNS|Load balancing
+CS-705|Static malware analysis examines a sample|Without executing it|Only while it runs|Only on paper|By deleting it
+CS-705|A side-channel attack exploits|Physical leakage such as timing or power|Weak passwords only|Social media posts|Open ports only
+AI-751|Structure from motion reconstructs|3D structure from multiple 2D images|Text from speech|Audio from images|Graphs from tables
+AI-751|Mask R-CNN performs|Instance segmentation|Speech recognition|Machine translation|Clustering only
+AI-751|Vision transformers split an image into|Patches|Sentences|Audio frames|Colour channels only
+AI-751|Epipolar geometry relates|Two views of the same scene|Two different datasets|Text and images|Two neural networks
+AI-751|Semantic segmentation assigns|A class label to every pixel|A single label to the image|A bounding box only|A caption
+AI-751|Contrastive learning trains models by|Pulling similar pairs together and pushing others apart|Sorting images|Reducing image size|Adding labels manually
+CS-704|Serverless computing bills users for|Actual execution time|Idle servers|Fixed monthly hardware|Number of developers
+CS-704|Kubernetes is used for|Container orchestration|Word processing|Image editing|Compiling C code
+CS-704|Live migration moves a running VM|Between hosts with minimal downtime|To a USB drive|Into a container|To a printer
+CS-704|Autoscaling adjusts resources based on|Workload demand|Programming language|Developer count|Screen size
+CS-704|A service mesh manages|Communication between microservices|Physical cables|Database schemas|User interfaces
+CS-704|Multi-tenancy means|Many customers share the same infrastructure|One customer per data centre|No isolation at all|A single user system
+CS-706|Practical Byzantine Fault Tolerance tolerates up to|f faulty nodes out of 3f + 1|Half of all nodes|All nodes|No faulty nodes
+CS-706|Layer-2 solutions such as rollups aim to improve|Scalability|Colour depth|Disk capacity|Screen resolution
+CS-706|The DAO attack exploited a|Re-entrancy bug in a smart contract|Weak Wi-Fi password|Hardware fault|DNS error
+CS-706|Proof of Stake selects validators based on|The amount of cryptocurrency staked|Computational power|Random IP addresses|Account age only
+CS-706|Sharding improves blockchain scalability by|Splitting the network into partitions|Increasing block time|Removing consensus|Storing data offline
+CS-706|A permissioned blockchain|Restricts who can participate|Is open to anyone|Has no nodes|Cannot store data
+AI-752|Pre-trained language models are adapted to tasks by|Fine-tuning|Deleting layers|Random guessing|Compiling
+AI-752|BLEU is a metric for evaluating|Machine translation|Image segmentation|Clustering|Speech loudness
+AI-752|Information extraction converts|Unstructured text into structured data|Images to audio|Tables to images|Code to text
+AI-752|Retrieval-augmented generation combines a language model with|A document retriever|A graphics card|A compiler|A spreadsheet
+AI-752|The attention weights in a transformer indicate|How much each token attends to others|The size of the vocabulary|The learning rate|The number of layers
+AI-752|Byte-pair encoding is a method of|Subword tokenisation|Image compression|Encryption|Sorting

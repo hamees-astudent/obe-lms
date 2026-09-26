@@ -8,6 +8,7 @@ import type {
   ProgramSummaryResponse,
   SemesterResponse,
   TeachingOfferingResponse,
+  TimetableResponse,
   UserSummaryResponse,
   UUID,
 } from '@/types/api';
@@ -159,5 +160,14 @@ export function nullIfNotFound<T>(request: Promise<T>): Promise<T | null> {
   return request.catch((error: unknown) => {
     if (statusOf(error) === 404) return null;
     throw error;
+  });
+}
+
+/** The signed-in user's own weekly classes this term (taught, assisted or enrolled). */
+export function useMyTimetable({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['me', 'timetable'],
+    queryFn: () => api.get<TimetableResponse>('/me/timetable').then((r) => r.data),
+    enabled,
   });
 }

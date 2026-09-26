@@ -2,6 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   BookOpen,
+  CalendarDays,
   ClipboardCheck,
   FileText,
   Bell,
@@ -43,6 +44,7 @@ const NAV_SECTIONS: NavSection[] = [
     heading: 'Learning',
     items: [
       { to: '/courses', label: 'Courses', icon: BookOpen },
+      { to: '/timetable', label: 'Timetable', icon: CalendarDays },
       { to: '/attendance', label: 'Attendance', icon: ClipboardCheck },
       { to: '/assessment', label: 'Assessment', icon: FileText },
       { to: '/exams', label: 'Exams', icon: ScanLine },

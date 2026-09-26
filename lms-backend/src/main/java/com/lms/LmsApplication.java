@@ -1,5 +1,6 @@
 package com.lms;
 
+import com.lms.seed.SeedCommand;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cache.annotation.EnableCaching;
@@ -7,6 +8,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.scheduling.annotation.EnableAsync;
 
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.TimeZone;
 
 @SpringBootApplication
@@ -20,6 +22,10 @@ public class LmsApplication {
 
     public static void main(String[] args) {
         pinTimeZone(System.getenv("APP_TIME_ZONE"));
+        if (args.length > 0 && SeedCommand.NAME.equals(args[0])) {
+            SeedCommand.run(LmsApplication.class, Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         SpringApplication.run(LmsApplication.class, args);
     }
 
