@@ -37,7 +37,8 @@ export default function Header({ onOpenNav }: { onOpenNav: () => void }) {
 
   const { data: unreadCount } = useQuery<number>({
     queryKey: ['notifications', 'unread-count'],
-    queryFn: () => api.get<number>('/notifications/unread-count').then((r) => r.data),
+    queryFn: () =>
+      api.get<{ unreadCount: number }>('/notifications/unread-count').then((r) => r.data.unreadCount),
     refetchInterval: 60_000,
     enabled: !!user,
   });

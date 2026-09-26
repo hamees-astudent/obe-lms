@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import { useNotificationStream } from '@/lib/notificationStream';
 
 /**
  * Application shell.
@@ -13,6 +14,9 @@ import Header from './Header';
 export default function AppLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
+
+  // New notifications appear as toasts the moment they are created.
+  useNotificationStream();
 
   // Navigating away should not leave the drawer covering the new page.
   useEffect(() => setDrawerOpen(false), [location.pathname]);

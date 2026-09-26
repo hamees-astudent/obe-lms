@@ -1,18 +1,28 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Bell, Info, X } from 'lucide-react';
 
-type ToastVariant = 'success' | 'error' | 'info';
+type ToastVariant = 'success' | 'error' | 'info' | 'notification';
 
 interface Toast {
   id: number;
   variant: ToastVariant;
   message: string;
+  title?: string;
+  onClick?: () => void;
+}
+
+/** A notification that has just arrived, shown with its title and opened on click. */
+export interface NotificationToast {
+  title: string;
+  message: string;
+  onClick?: () => void;
 }
 
 interface ToastApi {
   success: (message: string) => void;
   error: (message: string) => void;
   info: (message: string) => void;
+  notify: (notification: NotificationToast) => void;
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
@@ -30,6 +40,7 @@ export const toast: ToastApi = {
   success: (message) => externalApi?.success(message),
   error: (message) => externalApi?.error(message),
   info: (message) => externalApi?.info(message),
+  notify: (notification) => externalApi?.notify(notification),
 };
 
 /**
@@ -47,17 +58,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const push = useCallback(
-    (variant: ToastVariant, message: string) => {
+    (variant: ToastVariant, message: string, extra: Pick<Toast, 'title' | 'onClick'> = {}) => {
       const id = Date.now() + Math.random();
       // One outage fails many requests at once (a query per semester, say);
       // show the message once rather than stacking identical toasts.
       setToasts((current) =>
-        current.some((t) => t.variant === variant && t.message === message)
+        current.some((t) => t.variant === variant && t.message === message && t.title === extra.title)
           ? current
-          : [...current, { id, variant, message }],
+          : [...current, { id, variant, message, ...extra }],
       );
-      // Errors linger — the user may need to read and act on them.
-      setTimeout(() => dismiss(id), variant === 'error' ? 8000 : 4000);
+      // Errors and notifications linger — the user may need to read and act on them.
+      setTimeout(() => dismiss(id), variant === 'error' || variant === 'notification' ? 8000 : 4000);
     },
     [dismiss],
   );
@@ -67,6 +78,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       success: (message) => push('success', message),
       error: (message) => push('error', message),
       info: (message) => push('info', message),
+      notify: ({ title, message, onClick }) => push('notification', message, { title, onClick }),
     }),
     [push],
   );
@@ -107,6 +119,10 @@ const VARIANT_STYLES: Record<ToastVariant, { wrap: string; icon: React.ReactNode
     wrap: 'border-gray-200 bg-white text-gray-800',
     icon: <Info size={16} className="text-gray-500" />,
   },
+  notification: {
+    wrap: 'border-primary-200 bg-white text-gray-800',
+    icon: <Bell size={16} className="text-primary-600" />,
+  },
 };
 
 function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
@@ -117,7 +133,21 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       className={`pointer-events-auto flex w-full max-w-sm items-start gap-2.5 rounded-xl border p-3 text-sm shadow-lg animate-slide-up ${style.wrap}`}
     >
       <span className="mt-0.5 flex-shrink-0">{style.icon}</span>
-      <p className="min-w-0 flex-1 break-words">{toast.message}</p>
+      {toast.title ? (
+        <button
+          type="button"
+          onClick={() => {
+            toast.onClick?.();
+            onDismiss();
+          }}
+          className="min-w-0 flex-1 text-left"
+        >
+          <p className="break-words font-semibold text-gray-900">{toast.title}</p>
+          <p className="mt-0.5 line-clamp-3 break-words text-gray-600">{toast.message}</p>
+        </button>
+      ) : (
+        <p className="min-w-0 flex-1 break-words">{toast.message}</p>
+      )}
       <button
         type="button"
         onClick={onDismiss}

@@ -12,6 +12,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "notifications")
+@EntityListeners(NotificationPushListener.class)
 @Getter
 @Setter
 @NoArgsConstructor

@@ -2,6 +2,7 @@ package com.lms.infrastructure.security;
 
 import com.lms.infrastructure.security.jwt.JwtAuthenticationFilter;
 import com.lms.infrastructure.security.jwt.JwtProperties;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -64,6 +65,11 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 .authorizeHttpRequests(auth -> auth
+                        // ── Async re-dispatch ────────────────────────────────
+                        // A notification stream (SSE) ends with an ASYNC
+                        // dispatch of a request already authorised on its way
+                        // in; the JWT filter does not run again for it.
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         // ── Auth endpoints (public) ──────────────────────────
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/login",

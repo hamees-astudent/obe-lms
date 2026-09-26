@@ -3,9 +3,12 @@ package com.lms.modules.notifications;
 import com.lms.modules.notifications.dto.NotificationPage;
 import com.lms.modules.notifications.dto.NotificationResponse;
 import lombok.RequiredArgsConstructor;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
 import java.util.UUID;
@@ -16,6 +19,22 @@ import java.util.UUID;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final NotificationStreams notificationStreams;
+
+    /**
+     * Server-sent events: each new notification for the current user, as it is
+     * saved. Events are named {@code notification} and carry a
+     * {@link NotificationResponse}; the first event, {@code ready}, confirms the
+     * connection. The browser reconnects when the stream ends.
+     */
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream(Authentication auth, HttpServletResponse response) {
+        UUID userId = notificationService.resolveUserId(auth.getName());
+        // Proxies such as nginx buffer responses by default, which would hold events back.
+        response.setHeader("X-Accel-Buffering", "no");
+        response.setHeader("Cache-Control", "no-cache");
+        return notificationStreams.open(userId);
+    }
 
     /**
      * Get the current user's notification feed.
