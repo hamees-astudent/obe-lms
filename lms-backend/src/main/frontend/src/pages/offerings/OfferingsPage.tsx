@@ -4,7 +4,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
-  Plus, Edit2, Users, BookOpen, ChevronDown, ChevronUp, UserPlus, UserMinus,
+  Plus, Edit2, Users, BookOpen, ChevronDown, ChevronUp, UserPlus, UserMinus, UsersRound,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -17,7 +17,10 @@ import Spinner from '@/components/ui/Spinner';
 import UserSearchSelect from '@/components/ui/UserSearchSelect';
 import { useUserSummary } from '@/lib/queries';
 import Card from '@/components/ui/Card';
+import { CohortEnrollmentSummary, useEnrollCohort } from '@/components/cohorts/CohortEnrollment';
 import type {
+  CohortEnrollmentResponse,
+  CohortSummaryResponse,
   ProgramSummaryResponse,
   SemesterResponse,
   OfferingSummaryResponse,
@@ -87,6 +90,19 @@ function EnrollmentPanel({
     onSuccess: () => { invalidate(); setSelectedUser(null); setSelectedCourseRole('STUDENT'); },
   });
 
+  const [selectedCohortId, setSelectedCohortId] = useState('');
+  const [cohortResult, setCohortResult] = useState<CohortEnrollmentResponse | null>(null);
+
+  const { data: cohorts = [] } = useQuery<CohortSummaryResponse[]>({
+    queryKey: ['admin-cohorts', 'list'],
+    queryFn: () => api.get('/admin/cohorts').then((r) => r.data),
+  });
+
+  const cohortMut = useEnrollCohort((result) => {
+    setSelectedCohortId('');
+    setCohortResult(result);
+  });
+
   const dropMut = useMutation({
     mutationFn: (id: UUID) => api.delete(`/admin/enrollments/${id}`),
     onSuccess: () => {
@@ -145,6 +161,45 @@ function EnrollmentPanel({
           <UserPlus size={14} className="mr-1" /> Add
         </Button>
       </div>
+
+      {/* Add a whole cohort as students */}
+      <div className="flex gap-2 flex-wrap">
+        <select
+          value={selectedCohortId}
+          onChange={(e) => setSelectedCohortId(e.target.value)}
+          aria-label="Cohort to enroll"
+          className="min-w-[160px] flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          <option value="">
+            {cohorts.length === 0 ? 'No cohorts yet — create them under Cohorts' : 'Enroll a cohort…'}
+          </option>
+          {cohorts.map((c) => (
+            <option key={c.id} value={c.id} disabled={c.memberCount === 0}>
+              {c.name} ({c.memberCount} student{c.memberCount === 1 ? '' : 's'})
+            </option>
+          ))}
+        </select>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!selectedCohortId}
+          loading={cohortMut.isPending}
+          onClick={() => cohortMut.mutate({ cohortId: selectedCohortId, pscId: offeringId })}
+        >
+          <UsersRound size={14} className="mr-1" /> Enroll cohort
+        </Button>
+      </div>
+
+      <Modal open={!!cohortResult} onClose={() => setCohortResult(null)} title="Cohort enrolled">
+        {cohortResult && (
+          <div className="space-y-4">
+            <CohortEnrollmentSummary result={cohortResult} />
+            <div className="flex justify-end">
+              <Button onClick={() => setCohortResult(null)}>Done</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {isError ? (
         <QueryError error={error} onRetry={() => refetch()} />

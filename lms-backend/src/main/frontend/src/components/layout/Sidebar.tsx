@@ -10,6 +10,7 @@ import {
   Building2,
   BarChart2,
   Library,
+  UsersRound,
   type LucideIcon,
   ScanLine,
 } from 'lucide-react';
@@ -55,6 +56,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/users', label: 'Users', icon: Users, roles: ['ADMIN'] },
       { to: '/programs', label: 'Programs', icon: GraduationCap, roles: ['ADMIN'] },
       { to: '/offerings', label: 'Offerings', icon: Building2, roles: ['ADMIN'] },
+      { to: '/cohorts', label: 'Cohorts', icon: UsersRound, roles: ['ADMIN'] },
       { to: '/course-catalog', label: 'Course Catalog', icon: Library, roles: ['ADMIN'] },
       { to: '/grading-scales', label: 'Grading Scales', icon: BarChart2, roles: ['ADMIN'] },
     ],

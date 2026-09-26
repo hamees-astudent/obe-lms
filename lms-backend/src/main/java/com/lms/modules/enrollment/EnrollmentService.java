@@ -15,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -95,6 +98,95 @@ public class EnrollmentService {
         return toResponse(enrollment);
     }
 
+    // ── Bulk enroll ───────────────────────────────────────────────────────────
+
+    /** One student's result in {@link #enrollStudents}; a null reason means enrolled. */
+    public record BulkOutcome(UUID studentId, String skipReason) {
+        public boolean enrolled() {
+            return skipReason == null;
+        }
+    }
+
+    /**
+     * Enrolls many students as STUDENTs of one offering, in one transaction.
+     *
+     * <p>A student who cannot be enrolled — already a member, already completed
+     * the offering, the teacher of record — is skipped and reported rather than
+     * failing the batch: a cohort is typically enrolled again after a few late
+     * students join it, and that re-run must not be refused because most of the
+     * cohort is already in. Capacity is the exception. It is checked for the
+     * batch as a whole and refuses it outright, because enrolling only the
+     * first N would hand out the places by list order.
+     *
+     * <p>Every check is made up front rather than by calling {@link #enroll}
+     * per student and catching its refusals: an exception thrown through a
+     * joined {@code @Transactional} call marks the whole transaction
+     * rollback-only, even when caught, and the batch would fail on commit.
+     */
+    @Transactional
+    public List<BulkOutcome> enrollStudents(UUID pscId, Collection<UUID> studentIds) {
+        int maxCapacity = enrollmentRepository.findMaxCapacityByPscId(pscId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Course offering not found: " + pscId));
+        String teacherId = enrollmentRepository.findTeacherIdByPscId(pscId).orElse(null);
+        Map<UUID, Enrollment> existing = enrollmentRepository.findAllByPscId(pscId).stream()
+                .collect(Collectors.toMap(Enrollment::getStudentId, e -> e));
+
+        List<BulkOutcome> outcomes = new ArrayList<>();
+        List<Enrollment> toSave = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (UUID studentId : new LinkedHashSet<>(studentIds)) {
+            Enrollment enrollment = existing.get(studentId);
+            String reason = null;
+
+            if (studentId.toString().equals(teacherId)) {
+                reason = "Teacher of record for this offering";
+            } else if (enrollment == null) {
+                enrollment = new Enrollment();
+                enrollment.setPscId(pscId);
+                enrollment.setStudentId(studentId);
+            } else {
+                switch (enrollment.getStatus()) {
+                    case Enrollment.STATUS_ACTIVE ->
+                            reason = "Already a member (" + enrollment.getCourseRole() + ")";
+                    case Enrollment.STATUS_COMPLETED ->
+                            reason = "Already completed this offering";
+                    case Enrollment.STATUS_DROPPED -> {
+                        enrollment.setStatus(Enrollment.STATUS_ACTIVE);
+                        enrollment.setDroppedAt(null);
+                        enrollment.setEnrolledAt(now);
+                    }
+                    default -> reason = "Unknown enrollment status: " + enrollment.getStatus();
+                }
+            }
+
+            if (reason == null) {
+                enrollment.setCourseRole("STUDENT");
+                toSave.add(enrollment);
+            }
+            outcomes.add(new BulkOutcome(studentId, reason));
+        }
+
+        if (maxCapacity > 0 && !toSave.isEmpty()) {
+            long students = enrollmentRepository.countByPscIdAndStatusAndCourseRole(
+                    pscId, Enrollment.STATUS_ACTIVE, "STUDENT");
+            long placesLeft = Math.max(0, maxCapacity - students);
+            if (toSave.size() > placesLeft) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Enrolling these students needs " + toSave.size() + " places, but the offering has "
+                        + placesLeft + " left (student capacity " + maxCapacity + "). "
+                        + "Raise the offering's capacity, or enroll fewer students.");
+            }
+        }
+
+        for (Enrollment saved : enrollmentRepository.saveAll(toSave)) {
+            evictStudentCache(saved.getStudentId());
+            publishEvent(saved, EnrollmentEvent.Action.ENROLLED);
+        }
+        return outcomes;
+    }
+
     // ── Drop ──────────────────────────────────────────────────────────────────
 
     @Transactional
@@ -172,6 +264,13 @@ public class EnrollmentService {
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────
+
+    public void requireOfferingExists(UUID pscId) {
+        if (enrollmentRepository.findMaxCapacityByPscId(pscId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Course offering not found: " + pscId);
+        }
+    }
 
     private Enrollment requireEnrollment(UUID id) {
         return enrollmentRepository.findById(id)

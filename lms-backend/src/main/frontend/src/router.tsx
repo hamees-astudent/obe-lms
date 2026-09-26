@@ -30,6 +30,7 @@ const NotificationsPage   = lazy(() => import('@/pages/notifications/Notificatio
 const UsersPage           = lazy(() => import('@/pages/users/UsersPage'));
 const ProgramsPage        = lazy(() => import('@/pages/programs/ProgramsPage'));
 const OfferingsPage       = lazy(() => import('@/pages/offerings/OfferingsPage'));
+const CohortsPage         = lazy(() => import('@/pages/cohorts/CohortsPage'));
 const GradingScalesPage     = lazy(() => import('@/pages/grading/GradingScalesPage'));
 const CoursesCatalogPage    = lazy(() => import('@/pages/courses/CoursesCatalogPage'));
 const NotFoundPage          = lazy(() => import('@/pages/NotFoundPage'));
@@ -234,6 +235,14 @@ const router = createBrowserRouter([
                     element: (
                       <LazyPage>
                         <OfferingsPage />
+                      </LazyPage>
+                    ),
+                  },
+                  {
+                    path: 'cohorts',
+                    element: (
+                      <LazyPage>
+                        <CohortsPage />
                       </LazyPage>
                     ),
                   },

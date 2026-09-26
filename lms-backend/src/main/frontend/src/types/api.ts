@@ -223,6 +223,63 @@ export interface EnrollmentResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Cohorts — named groups of students enrolled in an offering in one step
+// ---------------------------------------------------------------------------
+export interface CohortSummaryResponse {
+  id: UUID;
+  name: string;
+  description?: string;
+  memberCount: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CohortMemberResponse {
+  studentId: UUID;
+  name: string;
+  email: string;
+  studentNumber?: string;
+  /** Account status; members who are not ACTIVE are skipped when the cohort is enrolled. */
+  status: string;
+}
+
+export interface CohortDetailResponse {
+  id: UUID;
+  name: string;
+  description?: string;
+  members: CohortMemberResponse[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AddCohortMembersResponse {
+  added: number;
+  alreadyMembers: number;
+  /** Ids or roll numbers that matched no user. */
+  notFound: string[];
+  /** Matched users who are not students, as "name (ROLE)". */
+  notStudents: string[];
+  cohort: CohortDetailResponse;
+}
+
+export interface CohortEnrollmentResult {
+  studentId: UUID;
+  studentName: string;
+  studentNumber?: string;
+  outcome: 'ENROLLED' | 'SKIPPED';
+  /** Why the student was skipped; absent when enrolled. */
+  reason?: string;
+}
+
+export interface CohortEnrollmentResponse {
+  cohortId: UUID;
+  pscId: UUID;
+  enrolled: number;
+  skipped: number;
+  results: CohortEnrollmentResult[];
+}
+
+// ---------------------------------------------------------------------------
 // Courses, CLOs, Materials
 // ---------------------------------------------------------------------------
 export interface CourseSummaryResponse {

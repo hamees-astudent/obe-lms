@@ -4,6 +4,7 @@ import com.lms.modules.assessment.AssignmentRepository;
 import com.lms.modules.assessment.QuizRepository;
 import com.lms.modules.attendance.AttendanceSessionRepository;
 import com.lms.modules.courses.ProgramSemesterCourseRepository;
+import com.lms.modules.enrollment.CohortRepository;
 import com.lms.modules.enrollment.EnrollmentRepository;
 import com.lms.modules.exams.ExamDataRepository;
 import com.lms.shared.OfferingStaff;
@@ -62,6 +63,7 @@ class NativeQueryIT {
     @Autowired QuizRepository quizzes;
     @Autowired AttendanceSessionRepository sessions;
     @Autowired EnrollmentRepository enrollments;
+    @Autowired CohortRepository cohorts;
     @Autowired ProgramSemesterCourseRepository offerings;
     @Autowired ExamDataRepository examData;
     @Autowired OfferingStaff offeringStaff;
@@ -196,6 +198,58 @@ class NativeQueryIT {
         assertThat(enrollments.findTeacherIdByPscId(psc)).contains(teacher.toString());
         assertThat(offerings.isActiveMember(psc, coTeacher)).isTrue();
         assertThat(offerings.isActiveMember(psc, teacher)).isFalse();
+    }
+
+    // ── Cohorts ──────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("cohort membership: add is idempotent, members and counts resolve")
+    void cohortMembership() {
+        UUID cohort = insert("INSERT INTO cohorts (name) VALUES ('BSCS 2026 A') RETURNING id");
+
+        assertThat(cohorts.addMember(cohort, student)).isEqualTo(1);
+        assertThat(cohorts.addMember(cohort, student)).isZero();
+        assertThat(cohorts.addMember(cohort, outsider)).isEqualTo(1);
+
+        var members = cohorts.findMembers(cohort);
+        // Roll-numbered students first, then the rest by name.
+        assertThat(members).extracting(v -> v.getStudentId())
+                .containsExactly(student.toString(), outsider.toString());
+        assertThat(members.get(0).getName()).isEqualTo("Sana Student");
+        assertThat(members.get(0).getEmail()).isEqualTo(email("Sana Student"));
+        assertThat(members.get(0).getStudentNumber()).isEqualTo("B26-0042");
+        assertThat(members.get(0).getRole()).isEqualTo("STUDENT");
+        assertThat(members.get(0).getStatus()).isEqualTo("ACTIVE");
+
+        assertThat(cohorts.countMembers(cohort)).isEqualTo(2);
+        assertThat(cohorts.countMembers()).anySatisfy(v -> {
+            assertThat(v.getCohortId()).isEqualTo(cohort.toString());
+            assertThat(v.getMemberCount()).isEqualTo(2);
+        });
+
+        assertThat(cohorts.removeMember(cohort, outsider)).isEqualTo(1);
+        assertThat(cohorts.removeMember(cohort, outsider)).isZero();
+    }
+
+    @Test
+    @DisplayName("cohort user lookups by id and by lower-cased roll number")
+    void cohortUserLookups() {
+        assertThat(cohorts.findUsersByIds(java.util.List.of(student, teacher)))
+                .extracting(v -> v.getRole())
+                .containsExactlyInAnyOrder("STUDENT", "TEACHER");
+        assertThat(cohorts.findUsersByStudentNumbers(java.util.List.of("b26-0042", "nope")))
+                .extracting(v -> v.getStudentId())
+                .containsExactly(student.toString());
+    }
+
+    @Test
+    @DisplayName("cohort names are unique regardless of case")
+    void cohortNameUnique() {
+        jdbc.update("INSERT INTO cohorts (name) VALUES ('Section A')");
+        assertThat(cohorts.existsByNameIgnoreCase("section a")).isTrue();
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> jdbc.update("INSERT INTO cohorts (name) VALUES ('SECTION A')"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────
