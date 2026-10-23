@@ -26,6 +26,11 @@ public class QuizSubmissionResponse {
     LocalDateTime submittedAt;
     BigDecimal score;
     boolean autoGraded;
+    /** IN_PROGRESS | PENDING_REVIEW | GRADED. */
+    String gradingStatus;
+    /** Per-question score and feedback: {"<question-id>": {"score": 2, "feedback": "..."}}. */
+    Map<String, Map<String, Object>> questionScores;
+    LocalDateTime gradedAt;
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
 }

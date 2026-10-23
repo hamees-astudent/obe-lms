@@ -28,7 +28,9 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import Card from '@/components/ui/Card';
-import type { Page, UUID, PloResponse } from '@/types/api';
+import type { Page, UUID, PloResponse, BloomLevel } from '@/types/api';
+import { BLOOM_LABELS, BLOOM_LEVELS } from '@/types/api';
+import BloomBadge from '@/components/ai/BloomBadge';
 
 // ---------------------------------------------------------------------------
 // Local types (aligned with Java backend DTOs)
@@ -50,6 +52,7 @@ interface CourseCloItem {
   title: string;
   description?: string;
   orderIndex: number;
+  bloomLevel?: BloomLevel;
   createdAt: string;
 }
 
@@ -86,6 +89,8 @@ const cloSchema = z.object({
   title: z.string().min(1, 'Title required').max(255),
   description: z.string().optional(),
   orderIndex: z.coerce.number().int().min(1, 'Min 1'),
+  // Blank means "not set"; the API rejects an empty level.
+  bloomLevel: z.string().optional().transform((v) => (v ? (v as BloomLevel) : undefined)),
 });
 
 type CourseForm = z.infer<typeof courseSchema>;
@@ -394,7 +399,8 @@ function CloPanel({ courseId }: { courseId: UUID }) {
       title: c.title,
       description: c.description ?? '',
       orderIndex: c.orderIndex,
-    });
+      bloomLevel: c.bloomLevel ?? '',
+    } as unknown as CloForm);
     setEditing(c);
   }
 
@@ -429,6 +435,7 @@ function CloPanel({ courseId }: { courseId: UUID }) {
                     {c.code}
                   </span>
                   <span className="text-sm text-gray-800">{c.title}</span>
+                  <BloomBadge level={c.bloomLevel} />
                 </div>
                 {c.description && (
                   <p className="mt-0.5 line-clamp-1 pl-10 text-xs text-gray-400">
@@ -499,6 +506,13 @@ function CloPanel({ courseId }: { courseId: UUID }) {
               error={addForm.formState.errors.title?.message}
               {...addForm.register('title')}
             />
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-gray-700">Bloom level</span>
+              <select {...addForm.register('bloomLevel')} className="h-9 w-full rounded-lg border border-gray-300 px-2 text-sm">
+                <option value="">Not set — read from the title's verb</option>
+                {BLOOM_LEVELS.map((b) => <option key={b} value={b}>{BLOOM_LABELS[b]}</option>)}
+              </select>
+            </label>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">
                 Description
@@ -557,6 +571,13 @@ function CloPanel({ courseId }: { courseId: UUID }) {
               error={editForm.formState.errors.title?.message}
               {...editForm.register('title')}
             />
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-gray-700">Bloom level</span>
+              <select {...editForm.register('bloomLevel')} className="h-9 w-full rounded-lg border border-gray-300 px-2 text-sm">
+                <option value="">Not set — read from the title's verb</option>
+                {BLOOM_LEVELS.map((b) => <option key={b} value={b}>{BLOOM_LABELS[b]}</option>)}
+              </select>
+            </label>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">
                 Description

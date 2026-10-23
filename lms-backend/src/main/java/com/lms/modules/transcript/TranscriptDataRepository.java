@@ -182,7 +182,11 @@ public class TranscriptDataRepository {
         return result != null ? result : 0.0;
     }
 
-    /** Sum of scores from submitted quiz submissions for a student in a PSC. */
+    /**
+     * Sum of scores from graded quiz submissions for a student in a PSC. An
+     * attempt whose written answers are still waiting for the teacher has no
+     * final score yet and is not counted.
+     */
     public double findStudentQuizMarks(UUID pscId, UUID studentId) {
         String sql = """
                 SELECT COALESCE(SUM(qs.score), 0)
@@ -190,7 +194,7 @@ public class TranscriptDataRepository {
                 JOIN   quizzes q ON q.id = qs.quiz_id
                 WHERE  q.psc_id           = :pscId
                 AND    qs.student_id      = :studentId
-                AND    qs.submitted_at IS NOT NULL
+                AND    qs.grading_status  = 'GRADED'
                 """;
         Double result = jdbc.queryForObject(sql,
                 Map.of("pscId", pscId, "studentId", studentId), Double.class);
@@ -307,9 +311,9 @@ public class TranscriptDataRepository {
                 FROM   quiz_clo_mappings qcm
                 JOIN   quizzes q ON q.id = qcm.quiz_id AND q.psc_id = :pscId
                 LEFT JOIN quiz_submissions qs
-                       ON qs.quiz_id       = q.id
-                      AND qs.student_id    = :studentId
-                      AND qs.submitted_at IS NOT NULL
+                       ON qs.quiz_id        = q.id
+                      AND qs.student_id     = :studentId
+                      AND qs.grading_status = 'GRADED'
                 WHERE  qcm.clo_id = :cloId
                 """;
         return jdbc.query(sql,

@@ -38,6 +38,7 @@ class CourseServiceTest {
     @Mock private MaterialCloMappingRepository    materialCloMappingRepository;
     @Mock private KafkaEventPublisher             kafkaEventPublisher;
     @Mock private OfferingStaff                   offeringStaff;
+    @Mock private org.springframework.context.ApplicationEventPublisher events;
 
     private CourseService service;
 
@@ -47,7 +48,7 @@ class CourseServiceTest {
     void setUp() {
         service = new CourseService(courseRepository, pscRepository, assistantRepository,
                 cloRepository, mappingRepository, materialRepository,
-                materialCloMappingRepository, kafkaEventPublisher, offeringStaff);
+                materialCloMappingRepository, kafkaEventPublisher, offeringStaff, events);
     }
 
     @Test

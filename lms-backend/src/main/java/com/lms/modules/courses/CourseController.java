@@ -282,19 +282,24 @@ public class CourseController {
     public List<CourseMaterialResponse> listMaterials(
             @PathVariable UUID pscId,
             @RequestParam(required = false) String type,
-            @RequestParam(defaultValue = "false") boolean visibleOnly) {
+            @RequestParam(defaultValue = "false") boolean visibleOnly,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        boolean staffView = courseService.materialAccess(pscId, principal.getId(), isAdmin(principal))
+                == CourseService.MaterialAccess.ALL;
         if (type != null) {
-            return courseService.listMaterialsByType(pscId, type);
+            return courseService.listMaterialsByType(pscId, type).stream()
+                    .filter(m -> staffView || m.visible()).toList();
         }
-        if (visibleOnly) {
+        if (visibleOnly || !staffView) {
             return courseService.listVisibleMaterials(pscId);
         }
         return courseService.listMaterials(pscId);
     }
 
     @GetMapping("/api/materials/{id}")
-    public CourseMaterialResponse getMaterial(@PathVariable UUID id) {
-        return courseService.getMaterial(id);
+    public CourseMaterialResponse getMaterial(@PathVariable UUID id,
+                                              @AuthenticationPrincipal UserPrincipal principal) {
+        return courseService.getMaterial(id, principal.getId(), isAdmin(principal));
     }
 
     private static boolean isAdmin(UserPrincipal principal) {

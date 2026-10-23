@@ -16,6 +16,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -59,6 +60,9 @@ class NativeQueryIT {
         String v = System.getenv(name);
         return v == null || v.isBlank() ? fallback : v;
     }
+
+    /** Needed by the notification entity's push listener, which the JPA slice does not create. */
+    @MockBean com.lms.modules.notifications.NotificationStreams notificationStreams;
 
     @Autowired JdbcTemplate jdbc;
     @Autowired AssignmentRepository assignments;

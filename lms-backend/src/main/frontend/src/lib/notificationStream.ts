@@ -55,7 +55,7 @@ function refreshFor(qc: QueryClient, n: NotificationResponse) {
 }
 
 /** One server-sent event, from the lines between two blank lines. */
-function parseEvent(block: string): { event: string; data: string } | null {
+export function parseEvent(block: string): { event: string; data: string } | null {
   let event = 'message';
   const data: string[] = [];
   for (const line of block.split(/\r?\n/)) {

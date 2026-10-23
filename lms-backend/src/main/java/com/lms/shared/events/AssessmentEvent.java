@@ -20,6 +20,7 @@ import java.util.UUID;
  *   <li>{@code ASSIGNMENT_SUBMITTED} — notify the teacher/assistant.</li>
  *   <li>{@code ASSIGNMENT_GRADED}    — notify the student.</li>
  *   <li>{@code QUIZ_SUBMITTED}       — notify the teacher/assistant.</li>
+ *   <li>{@code QUIZ_GRADED}          — notify the student (written answers marked).</li>
  * </ul>
  *
  * <p>The {@code *_CREATED} and {@code MATERIAL_ADDED} actions fan out to a whole
@@ -42,7 +43,9 @@ public class AssessmentEvent {
         /** Per-student lifecycle events. */
         ASSIGNMENT_SUBMITTED,
         ASSIGNMENT_GRADED,
-        QUIZ_SUBMITTED
+        QUIZ_SUBMITTED,
+        /** A quiz with written answers has been marked by the teacher. */
+        QUIZ_GRADED
     }
 
     /** Unique event identifier — use for idempotent processing. */

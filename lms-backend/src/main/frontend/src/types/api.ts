@@ -394,10 +394,13 @@ export interface CourseResponse {
 
 export interface CloResponse {
   id: UUID;
+  courseId: UUID;
   code: string;
-  description: string;
-  bloomLevel: number;
-  ploMappings: PloMappingResponse[];
+  title: string;
+  description?: string;
+  orderIndex: number;
+  bloomLevel?: BloomLevel;
+  createdAt: string;
 }
 
 export interface PloMappingResponse {
@@ -574,16 +577,57 @@ export interface QuizResponse {
   updatedAt: string;
 }
 
+/** Choice questions are auto-graded; written answers are marked by the teacher. */
+export type QuestionType = 'MCQ' | 'MSQ' | 'SHORT_ANSWER' | 'LONG_ANSWER';
+export const WRITTEN_TYPES: QuestionType[] = ['SHORT_ANSWER', 'LONG_ANSWER'];
+export const isWrittenType = (t: QuestionType) => WRITTEN_TYPES.includes(t);
+export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
+  MCQ: 'Single answer',
+  MSQ: 'Multiple answers',
+  SHORT_ANSWER: 'Short answer',
+  LONG_ANSWER: 'Long answer',
+};
+
+export type BloomLevel = 'REMEMBER' | 'UNDERSTAND' | 'APPLY' | 'ANALYZE' | 'EVALUATE' | 'CREATE';
+export const BLOOM_LEVELS: BloomLevel[] = ['REMEMBER', 'UNDERSTAND', 'APPLY', 'ANALYZE', 'EVALUATE', 'CREATE'];
+export const BLOOM_LABELS: Record<BloomLevel, string> = {
+  REMEMBER: 'Remember',
+  UNDERSTAND: 'Understand',
+  APPLY: 'Apply',
+  ANALYZE: 'Analyze',
+  EVALUATE: 'Evaluate',
+  CREATE: 'Create',
+};
+
+export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD';
+export const DIFFICULTIES: Difficulty[] = ['EASY', 'MEDIUM', 'HARD'];
+
+/** One marking-scheme row of a written-answer question. */
+export interface RubricItem {
+  criterion: string;
+  marks: number;
+  keywords?: string[];
+}
+
 export interface QuizQuestionResponse {
   id: UUID;
   quizId: UUID;
   questionText: string;
-  type: 'MCQ' | 'MSQ';
+  type: QuestionType;
   options: Array<{ id: string; text: string }>;
   correctAnswer: string[] | null; // null for students before submit
   marks: number;
   orderIndex: number;
   explanation?: string;
+  bloomLevel?: BloomLevel;
+  difficulty?: Difficulty;
+  /** Staff only. */
+  modelAnswer?: string;
+  /** Staff only. */
+  rubric?: RubricItem[];
+  /** Staff only. */
+  cloIds?: UUID[];
+  aiGenerated?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -603,8 +647,18 @@ export interface QuizSubmissionResponse {
   submittedAt?: string;
   score?: number;
   autoGraded: boolean;
+  gradingStatus?: GradingStatus;
+  /** questionId → { score, maxMarks, feedback, gradedBy } */
+  questionScores?: Record<string, { score: number; maxMarks?: number; feedback?: string; gradedBy?: string }>;
+  gradedAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type GradingStatus = 'IN_PROGRESS' | 'PENDING_REVIEW' | 'GRADED';
+
+export interface GradeQuizSubmissionBody {
+  grades: Record<string, { score: number; feedback?: string }>;
 }
 
 export interface CreateQuizBody {
@@ -629,23 +683,20 @@ export interface UpdateQuizBody {
 
 export interface CreateQuizQuestionBody {
   questionText: string;
-  type: 'MCQ' | 'MSQ';
+  type: QuestionType;
   options: Array<{ id: string; text: string }>;
   correctAnswer: string[];
   marks: number;
   orderIndex?: number;
   explanation?: string;
+  bloomLevel?: BloomLevel;
+  difficulty?: Difficulty;
+  modelAnswer?: string;
+  rubric?: RubricItem[];
+  cloIds?: UUID[];
 }
 
-export interface UpdateQuizQuestionBody {
-  questionText: string;
-  type: 'MCQ' | 'MSQ';
-  options: Array<{ id: string; text: string }>;
-  correctAnswer: string[];
-  marks: number;
-  orderIndex: number;
-  explanation?: string;
-}
+export type UpdateQuizQuestionBody = CreateQuizQuestionBody & { orderIndex: number };
 
 export interface SubmitQuizAnswersBody {
   answers: Record<string, string[]>;
@@ -789,6 +840,7 @@ export type NotificationEventType =
   | 'ASSIGNMENT_SUBMITTED'
   | 'ASSIGNMENT_GRADED'
   | 'QUIZ_SUBMITTED'
+  | 'QUIZ_GRADED'
   | 'SEMESTER_CLOSED'
   | 'SEMESTER_REOPENED';
 
@@ -1025,6 +1077,361 @@ export const EXAM_TYPE_LABELS: Record<ExamType, string> = {
   SESSIONAL: 'Sessional',
   MAKEUP: 'Makeup',
 };
+
+// ---------------------------------------------------------------------------
+// Study assistant & question generator (NLP, all on this server)
+// ---------------------------------------------------------------------------
+export interface AiStatusResponse {
+  llmEnabled: boolean;
+  llmAvailable: boolean;
+  model: string;
+  /** LLM: local model in use · BASIC: classical NLP only */
+  mode: 'LLM' | 'BASIC';
+  nlpModelsLoaded: boolean;
+}
+
+export type IngestionStatus = 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED' | 'UNSUPPORTED';
+
+export interface IngestionStatusResponse {
+  materialId: UUID;
+  title: string;
+  status: IngestionStatus;
+  error?: string;
+  pageCount?: number;
+  chunkCount?: number;
+  topicCount: number;
+  visible: boolean;
+  finishedAt?: string;
+}
+
+export type LocationType = 'PAGE' | 'SLIDE' | 'SECTION';
+
+export interface TopicResponse {
+  id: UUID;
+  materialId: UUID;
+  materialTitle: string;
+  name: string;
+  summary?: string;
+  locationType?: LocationType;
+  locationStart: number;
+  locationEnd: number;
+}
+
+export interface CitationResponse {
+  ref?: string;
+  chunkId: UUID;
+  materialId: UUID;
+  materialTitle: string;
+  locationType: LocationType;
+  locationStart: number;
+  locationEnd: number;
+  /** "Slide 12", "Pages 4–5" */
+  locationLabel: string;
+  heading?: string;
+}
+
+export interface StudyCourseResponse {
+  pscId: UUID;
+  courseCode: string;
+  courseName: string;
+  semesterName: string;
+  readyMaterials: number;
+}
+
+export interface ChatMessageResponse {
+  id: UUID;
+  role: 'USER' | 'ASSISTANT';
+  content: string;
+  citations: CitationResponse[];
+  refused: boolean;
+  mode?: 'LLM' | 'EXTRACTIVE';
+  unverified: boolean;
+  createdAt: string;
+}
+
+export interface ChatSessionResponse {
+  id: UUID;
+  pscId: UUID;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages?: ChatMessageResponse[];
+}
+
+export type QuestionCounts = Partial<Record<QuestionType, number>>;
+
+export interface MockRequestBody {
+  pscId: UUID;
+  kind: 'QUIZ' | 'PAPER';
+  topicIds?: UUID[];
+  materialIds?: UUID[];
+  counts: QuestionCounts;
+  difficulty?: Difficulty;
+  durationMinutes?: number;
+}
+
+export interface MockQuestionResponse {
+  id: string;
+  type: QuestionType;
+  questionText: string;
+  options: Array<{ id: string; text: string }>;
+  marks: number;
+  bloomLevel?: BloomLevel;
+  /** Present once graded. */
+  correctAnswer?: string[];
+  modelAnswer?: string;
+  explanation?: string;
+  sources: CitationResponse[];
+}
+
+export interface MockResult {
+  score: number;
+  maxMarks: number;
+  feedback?: string;
+  correct?: boolean;
+  method?: 'LLM' | 'CLASSICAL' | 'NONE';
+  covered?: string[];
+  missing?: string[];
+}
+
+export interface MockAttemptResponse {
+  id: UUID;
+  pscId: UUID;
+  kind: 'QUIZ' | 'PAPER';
+  status: 'GENERATING' | 'READY' | 'GRADED' | 'FAILED';
+  error?: string;
+  config: { counts?: QuestionCounts; difficulty?: Difficulty; durationMinutes?: number; notes?: string[] };
+  totalMarks: number;
+  score?: number;
+  questionCount: number;
+  createdAt: string;
+  submittedAt?: string;
+  questions?: MockQuestionResponse[];
+  answers?: Record<string, string[]>;
+  results?: Record<string, MockResult>;
+}
+
+export interface MarksTable {
+  base: Record<QuestionType, number>;
+  bloom: Record<BloomLevel, number>;
+  difficulty: Record<Difficulty, number>;
+}
+
+export interface PaperSettingsResponse {
+  pscId: UUID;
+  maxTotalMarks: number;
+  maxQuestions: number;
+  maxDurationMinutes: number;
+  mockMaxTotalMarks: number;
+  marksTable: MarksTable;
+}
+
+export interface PaperSettingsBody {
+  maxTotalMarks: number;
+  maxQuestions: number;
+  maxDurationMinutes: number;
+  mockMaxTotalMarks: number;
+  marksTable?: MarksTable;
+}
+
+export interface GenerationRequestBody {
+  materialIds?: UUID[];
+  topicIds?: UUID[];
+  counts: QuestionCounts;
+  difficulty?: Difficulty;
+  bloomLevels?: BloomLevel[];
+  targetCloIds?: UUID[];
+  maxTotalMarks: number;
+  instructions?: string;
+}
+
+export interface GenerationEstimateResponse {
+  estimatedMarks: number;
+  maxTotalMarks: number;
+  offeringMaxTotalMarks: number;
+  questionCount: number;
+  maxQuestions: number;
+  marksPerQuestion: Record<QuestionType, number>;
+  withinLimit: boolean;
+  problem?: string;
+}
+
+export interface CloScore {
+  cloId: UUID;
+  code: string;
+  score: number;
+}
+
+export interface QuestionDraftResponse {
+  id: UUID;
+  orderIndex: number;
+  type: QuestionType;
+  questionText: string;
+  options: Array<{ id: string; text: string }>;
+  correctAnswer: string[];
+  modelAnswer?: string;
+  rubric: RubricItem[];
+  explanation?: string;
+  marks: number;
+  bloomLevel?: BloomLevel;
+  bloomSource?: string;
+  difficulty?: Difficulty;
+  suggestedCloIds: UUID[];
+  cloScores: CloScore[];
+  cloRationale?: string;
+  source: 'LLM' | 'TEMPLATE';
+  sources: CitationResponse[];
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  edited: boolean;
+}
+
+export interface GenerationJobResponse {
+  id: UUID;
+  pscId: UUID;
+  status: 'PENDING' | 'RUNNING' | 'READY' | 'FAILED';
+  mode?: 'LLM' | 'TEMPLATE' | 'HYBRID';
+  error?: string;
+  config: Partial<GenerationRequestBody>;
+  notes: string[];
+  totalMarks: number;
+  draftCount: number;
+  createdAt: string;
+  finishedAt?: string;
+  drafts?: QuestionDraftResponse[];
+}
+
+export interface UpdateDraftBody {
+  questionText: string;
+  options: Array<{ id: string; text: string }>;
+  correctAnswer: string[];
+  modelAnswer?: string;
+  rubric?: RubricItem[];
+  explanation?: string;
+  marks: number;
+  bloomLevel?: BloomLevel;
+  difficulty?: Difficulty;
+  cloIds: UUID[];
+  status?: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+}
+
+export interface SaveDraftsBody {
+  target: 'QUIZ' | 'PAPER';
+  quizId?: UUID;
+  paperId?: UUID;
+  newQuiz?: { title: string; description?: string; durationMinutes?: number };
+  newPaper?: { title: string; instructions?: string; durationMinutes?: number; maxTotalMarks?: number };
+  draftIds: UUID[];
+}
+
+export interface SaveDraftsResponse {
+  target: 'QUIZ' | 'PAPER';
+  targetId: UUID;
+  saved: number;
+}
+
+export interface QuestionAssistBody {
+  pscId: UUID;
+  questionText: string;
+  type: QuestionType;
+  options?: Array<{ id: string; text: string }>;
+  correctAnswer?: string[];
+  modelAnswer?: string;
+  difficulty?: Difficulty;
+}
+
+export interface QuestionAssistResponse {
+  bloomLevel: BloomLevel;
+  bloomSource: string;
+  marks: number;
+  marksBreakdown: string;
+  suggestedCloIds: UUID[];
+  cloScores: CloScore[];
+  cloRationale: string;
+  modelUsed: boolean;
+}
+
+export interface GradeSuggestionResponse {
+  questionId: string;
+  score: number;
+  maxMarks: number;
+  feedback: string;
+  method: 'LLM' | 'CLASSICAL' | 'NONE';
+  classicalScore?: number;
+  modelScore?: number;
+  disagreement: boolean;
+  covered: string[];
+  missing: string[];
+}
+
+/** A paper item's question snapshot, as it prints. */
+export interface PaperQuestion {
+  type: QuestionType;
+  questionText: string;
+  options: Array<{ id: string; text: string }>;
+  correctAnswer: string[];
+  modelAnswer?: string;
+  rubric?: RubricItem[];
+  explanation?: string;
+  bloomLevel?: BloomLevel;
+  difficulty?: Difficulty;
+  marks: number;
+  cloIds?: UUID[];
+  source?: string;
+}
+
+export type PaperSection = 'CHOICE' | 'SHORT' | 'LONG';
+
+export interface PaperItemResponse {
+  id: UUID;
+  section: PaperSection;
+  orderIndex: number;
+  marks: number;
+  question: PaperQuestion;
+}
+
+export interface PrintSetResponse {
+  setCode: string;
+  shuffledQuestions: boolean;
+  shuffledOptions: boolean;
+  printedAt: string;
+}
+
+export interface PaperResponse {
+  id: UUID;
+  pscId: UUID;
+  title: string;
+  instructions?: string;
+  durationMinutes?: number;
+  maxTotalMarks: number;
+  totalMarks: number;
+  status: 'DRAFT' | 'FINAL';
+  questionCount: number;
+  maxQuestions: number;
+  createdAt: string;
+  updatedAt: string;
+  items?: PaperItemResponse[];
+  printSets?: PrintSetResponse[];
+}
+
+export interface PaperBody {
+  title: string;
+  instructions?: string;
+  durationMinutes?: number;
+  maxTotalMarks: number;
+}
+
+export interface AddPaperItemsBody {
+  draftIds?: UUID[];
+  quizQuestionIds?: UUID[];
+  questions?: PaperQuestion[];
+  fitToLimit?: boolean;
+}
+
+export interface AddPaperItemsResponse {
+  added: number;
+  skipped: number;
+  paper: PaperResponse;
+}
 
 // ---------------------------------------------------------------------------
 // Pagination

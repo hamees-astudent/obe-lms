@@ -10,5 +10,6 @@ public record CloResponse(
         String title,
         String description,
         int orderIndex,
+        String bloomLevel,
         LocalDateTime createdAt
 ) {}

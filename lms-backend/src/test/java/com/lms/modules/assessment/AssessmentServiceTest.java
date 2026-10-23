@@ -3,6 +3,7 @@ package com.lms.modules.assessment;
 import com.lms.infrastructure.messaging.KafkaEventPublisher;
 import com.lms.shared.OfferingStaff;
 import com.lms.modules.assessment.dto.CreateQuizQuestionRequest;
+import com.lms.modules.assessment.dto.GradeQuizSubmissionRequest;
 import com.lms.modules.assessment.dto.GradeSubmissionRequest;
 import com.lms.modules.assessment.dto.SubmitAssignmentRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,6 +51,7 @@ class AssessmentServiceTest {
     @Mock private QuizCloMappingRepository       quizCloMappingRepository;
     @Mock private KafkaEventPublisher            kafkaEventPublisher;
     @Mock private OfferingStaff                  offeringStaff;
+    @Mock private QuestionCloMappingRepository   questionCloMappingRepository;
 
     private AssessmentService service;
 
@@ -63,8 +65,8 @@ class AssessmentServiceTest {
     void setUp() {
         service = new AssessmentService(assignmentRepository, submissionRepository,
                 quizRepository, questionRepository, quizSubmissionRepository,
-                assignmentCloMappingRepository, quizCloMappingRepository, kafkaEventPublisher,
-                offeringStaff);
+                assignmentCloMappingRepository, quizCloMappingRepository, questionCloMappingRepository,
+                kafkaEventPublisher, offeringStaff);
 
         // Real admin/403 logic; only the database lookup is stubbed.
         doCallRealMethod().when(offeringStaff).require(any(), any(), anyBoolean());
@@ -333,6 +335,132 @@ class AssessmentServiceTest {
         when(offeringStaff.isStaff(any(), any())).thenReturn(true);
         assertThat(service.listQuestions(quizId, teacherId, false, true).get(0).getCorrectAnswer())
                 .containsExactly("a");
+    }
+
+    // ── Written answers ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("a written-answer question needs a model answer")
+    void writtenQuestionNeedsModelAnswer() {
+        var req = written(null, List.of());
+        assertBadRequest(() -> service.addQuestion(quizId, req, teacherId, false));
+    }
+
+    @Test
+    @DisplayName("a rubric may not promise more marks than the question has")
+    void rubricWithinMarks() {
+        var req = written("Atomicity, consistency, isolation, durability.",
+                List.of(Map.of("criterion", "Names all four", "marks", 3), Map.of("criterion", "Explains", "marks", 3)));
+        assertBadRequest(() -> service.addQuestion(quizId, req, teacherId, false));
+    }
+
+    @Test
+    @DisplayName("a written-answer question is saved without options")
+    void writtenQuestionIsSaved() {
+        when(questionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        var req = written("Atomicity, consistency, isolation, durability.",
+                List.of(Map.of("criterion", "Names all four", "marks", 4)));
+        req.setOptions(List.of(Map.of("id", "a", "text", "ignored")));
+
+        var saved = service.addQuestion(quizId, req, teacherId, false);
+
+        assertThat(saved.getOptions()).isEmpty();
+        assertThat(saved.getModelAnswer()).startsWith("Atomicity");
+        assertThat(saved.getBloomLevel()).isEqualTo("UNDERSTAND");
+    }
+
+    @Test
+    @DisplayName("an attempt with written answers waits for review with no score")
+    void writtenAnswersWaitForReview() {
+        UUID writtenId = mixedQuiz();
+        var sub = attempt(LocalDateTime.now().minusMinutes(2));
+        when(quizSubmissionRepository.findById(submissionId)).thenReturn(Optional.of(sub));
+
+        var result = service.submitQuiz(submissionId, studentId, Map.of(
+                questionId.toString(), List.of("a"), writtenId.toString(), List.of("ACID stands for…")));
+
+        assertThat(result.getGradingStatus()).isEqualTo("PENDING_REVIEW");
+        assertThat(result.getScore()).isNull();
+        assertThat(result.isAutoGraded()).isFalse();
+        assertThat(result.getQuestionScores().get(questionId.toString()).get("score")).isEqualTo(BigDecimal.valueOf(5));
+    }
+
+    @Test
+    @DisplayName("the teacher's marks for written answers finalise the score")
+    void teacherGradesWrittenAnswers() {
+        UUID writtenId = mixedQuiz();
+        var sub = attempt(LocalDateTime.now().minusMinutes(2));
+        when(quizSubmissionRepository.findById(submissionId)).thenReturn(Optional.of(sub));
+        service.submitQuiz(submissionId, studentId, Map.of(questionId.toString(), List.of("a")));
+
+        var result = service.gradeQuizSubmission(submissionId, grades(writtenId, "3.5"), teacherId, false);
+
+        assertThat(result.getGradingStatus()).isEqualTo("GRADED");
+        assertThat(result.getScore()).isEqualByComparingTo("8.5");
+        assertThat(result.getQuestionScores().get(writtenId.toString()).get("feedback")).isEqualTo("Good");
+    }
+
+    @Test
+    @DisplayName("marks above a question's worth, or a missing written answer, are refused")
+    void gradesAreChecked() {
+        UUID writtenId = mixedQuiz();
+        var sub = attempt(LocalDateTime.now().minusMinutes(2));
+        when(quizSubmissionRepository.findById(submissionId)).thenReturn(Optional.of(sub));
+        service.submitQuiz(submissionId, studentId, Map.of());
+
+        assertBadRequest(() -> service.gradeQuizSubmission(submissionId, grades(writtenId, "5"), teacherId, false));
+        assertBadRequest(() -> service.gradeQuizSubmission(submissionId, grades(UUID.randomUUID(), "1"), teacherId, false));
+    }
+
+    @Test
+    @DisplayName("students never see the model answer or rubric")
+    void modelAnswerHiddenFromStudents() {
+        mixedQuiz();
+        when(offeringStaff.isStaff(any(), any())).thenReturn(false);
+        var listed = service.listQuestions(quizId, studentId, false, false);
+        assertThat(listed).allSatisfy(q -> {
+            assertThat(q.getModelAnswer()).isNull();
+            assertThat(q.getRubric()).isNull();
+        });
+    }
+
+    /** The timed quiz's 5-mark MCQ plus a 4-mark short answer; returns the short answer's id. */
+    private UUID mixedQuiz() {
+        timedQuiz(30);
+        var choice = new QuizQuestion();
+        ReflectionTestUtils.setField(choice, "id", questionId);
+        choice.setCorrectAnswer(List.of("a"));
+        choice.setMarks(BigDecimal.valueOf(5));
+        var w = new QuizQuestion();
+        UUID writtenId = UUID.randomUUID();
+        ReflectionTestUtils.setField(w, "id", writtenId);
+        w.setType("SHORT_ANSWER");
+        w.setOrderIndex(1);
+        w.setMarks(BigDecimal.valueOf(4));
+        w.setModelAnswer("Atomicity, consistency, isolation and durability.");
+        when(questionRepository.findAllByQuizIdOrderByOrderIndexAsc(quizId)).thenReturn(List.of(choice, w));
+        when(quizSubmissionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        return writtenId;
+    }
+
+    private static GradeQuizSubmissionRequest grades(UUID questionId, String score) {
+        var g = new GradeQuizSubmissionRequest.QuestionGrade();
+        g.setScore(new BigDecimal(score));
+        g.setFeedback("Good");
+        var req = new GradeQuizSubmissionRequest();
+        req.setGrades(Map.of(questionId.toString(), g));
+        return req;
+    }
+
+    private static CreateQuizQuestionRequest written(String modelAnswer, List<Map<String, Object>> rubric) {
+        var req = new CreateQuizQuestionRequest();
+        req.setQuestionText("Explain the ACID properties.");
+        req.setType("SHORT_ANSWER");
+        req.setModelAnswer(modelAnswer);
+        req.setRubric(rubric);
+        req.setBloomLevel("UNDERSTAND");
+        req.setMarks(BigDecimal.valueOf(4));
+        return req;
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────

@@ -40,8 +40,11 @@ import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
 import Badge from '@/components/ui/Badge';
+import IngestionBadge from '@/components/ai/IngestionBadge';
+import { useIngestion } from '@/lib/ai';
 import type {
   OfferingSummaryResponse,
+  IngestionStatusResponse,
   CourseMaterialResponse,
   CreateMaterialBody,
   UpdateMaterialBody,
@@ -360,6 +363,9 @@ interface MaterialCardProps {
   onEdit: (m: CourseMaterialResponse) => void;
   onDelete: (id: UUID) => void;
   onToggleVisible: (m: CourseMaterialResponse) => void;
+  /** Index state for the study assistant (staff only, documents only). */
+  ingestion?: IngestionStatusResponse;
+  onReindex?: () => void;
 }
 
 function MaterialCard({
@@ -370,6 +376,8 @@ function MaterialCard({
   onEdit,
   onDelete,
   onToggleVisible,
+  ingestion,
+  onReindex,
 }: MaterialCardProps) {
   const meta = TYPE_META[material.type] ?? TYPE_META['DOCUMENT'];
   const Icon = meta.icon;
@@ -392,6 +400,17 @@ function MaterialCard({
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                     Hidden
                   </span>
+                )}
+                {ingestion && <IngestionBadge status={ingestion.status} error={ingestion.error} />}
+                {ingestion && onReindex && (ingestion.status === 'FAILED' || ingestion.status === 'READY') && (
+                  <button
+                    type="button"
+                    onClick={onReindex}
+                    title={ingestion.error ?? 'Read the file again'}
+                    className="text-xs text-primary-600 hover:underline"
+                  >
+                    Reindex
+                  </button>
                 )}
               </div>
               {material.description && (
@@ -586,6 +605,7 @@ function MaterialFormModal({ pscId, editing, onClose }: MaterialFormModalProps) 
         .then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'materials'] });
+      queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'ingestion'] });
       onClose();
     },
   });
@@ -597,6 +617,7 @@ function MaterialFormModal({ pscId, editing, onClose }: MaterialFormModalProps) 
         .then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'materials'] });
+      queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'ingestion'] });
       onClose();
     },
   });
@@ -912,12 +933,22 @@ export default function CourseDetailPage() {
     enabled: !!pscId,
   });
 
+  const ingestionQ = useIngestion(pscId, canManage);
+  const reindex = useMutation({
+    mutationFn: (materialId: UUID) => api.post(`/offerings/${pscId}/ai/reindex`, undefined, { params: { materialId } }),
+    onSuccess: () => {
+      toast.info('Reading the file again for the study assistant.');
+      queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'ingestion'] });
+    },
+  });
+
   // ── Mutations ────────────────────────────────────────────────────────────
   const deleteMutation = useMutation({
     mutationFn: (id: UUID) => api.delete(`/materials/${id}`),
     onSuccess: () => {
       toast.success('Material deleted.');
       queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'materials'] });
+      queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'ingestion'] });
       setDeletingId(null);
     },
   });
@@ -935,6 +966,7 @@ export default function CourseDetailPage() {
         .then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'materials'] });
+      queryClient.invalidateQueries({ queryKey: ['offerings', pscId, 'ingestion'] });
     },
   });
 
@@ -1020,6 +1052,8 @@ export default function CourseDetailPage() {
               onEdit={(mat) => setModal({ mode: 'edit', material: mat })}
               onDelete={setDeletingId}
               onToggleVisible={(mat) => toggleMutation.mutate(mat)}
+              ingestion={ingestionQ.data?.find((i) => i.materialId === m.id)}
+              onReindex={() => reindex.mutate(m.id)}
             />
           ))}
         </div>

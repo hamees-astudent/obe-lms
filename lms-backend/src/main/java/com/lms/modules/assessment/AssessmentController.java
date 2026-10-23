@@ -187,6 +187,21 @@ public class AssessmentController {
         assessmentService.deleteQuestion(id, principal.getId(), isAdmin(principal));
     }
 
+    @GetMapping("/api/quiz-questions/{id}/clo-mappings")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
+    public List<UUID> listQuestionCloMappings(@PathVariable UUID id,
+                                              @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.listQuestionCloMappings(id, principal.getId(), isAdmin(principal));
+    }
+
+    @PutMapping("/api/quiz-questions/{id}/clo-mappings")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
+    public List<UUID> replaceQuestionCloMappings(@PathVariable UUID id,
+                                                 @RequestBody @Valid QuestionCloMappingsRequest req,
+                                                 @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.replaceQuestionCloMappings(id, req.cloIds(), principal.getId(), isAdmin(principal));
+    }
+
     // ── Quiz Submissions ──────────────────────────────────────────────────────
 
     @PostMapping("/api/quizzes/{id}/start")
@@ -221,8 +236,19 @@ public class AssessmentController {
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
     public List<QuizSubmissionResponse> listQuizSubmissions(
             @PathVariable UUID id,
+            @RequestParam(required = false) String status,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return assessmentService.listQuizSubmissions(id, principal.getId(), isAdmin(principal));
+        return assessmentService.listQuizSubmissions(id, status, principal.getId(), isAdmin(principal));
+    }
+
+    /** The teacher's marks for an attempt's written answers; finalises its score. */
+    @PutMapping("/api/quiz-submissions/{id}/grades")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','ASSISTANT')")
+    public QuizSubmissionResponse gradeQuizSubmission(
+            @PathVariable UUID id,
+            @RequestBody @Valid GradeQuizSubmissionRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return assessmentService.gradeQuizSubmission(id, req, principal.getId(), isAdmin(principal));
     }
 
     @GetMapping("/api/quiz-submissions/{id}")

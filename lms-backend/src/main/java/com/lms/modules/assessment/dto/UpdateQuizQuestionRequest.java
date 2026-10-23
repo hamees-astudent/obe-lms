@@ -6,6 +6,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Data
 public class UpdateQuizQuestionRequest {
@@ -14,16 +15,15 @@ public class UpdateQuizQuestionRequest {
     private String questionText;
 
     @NotBlank
-    @Pattern(regexp = "MCQ|MSQ", message = "type must be MCQ or MSQ")
+    @Pattern(regexp = "MCQ|MSQ|SHORT_ANSWER|LONG_ANSWER",
+             message = "type must be MCQ, MSQ, SHORT_ANSWER or LONG_ANSWER")
     private String type;
 
     @NotNull
-    @Size(min = 2)
-    private List<Map<String, Object>> options;
+    private List<Map<String, Object>> options = List.of();
 
     @NotNull
-    @Size(min = 1)
-    private List<String> correctAnswer;
+    private List<String> correctAnswer = List.of();
 
     @NotNull
     @DecimalMin("0.01")
@@ -33,4 +33,18 @@ public class UpdateQuizQuestionRequest {
     private int orderIndex;
 
     private String explanation;
+
+    @Pattern(regexp = "REMEMBER|UNDERSTAND|APPLY|ANALYZE|EVALUATE|CREATE",
+             message = "bloomLevel must be a Bloom's taxonomy level")
+    private String bloomLevel;
+
+    @Pattern(regexp = "EASY|MEDIUM|HARD", message = "difficulty must be EASY, MEDIUM or HARD")
+    private String difficulty;
+
+    private String modelAnswer;
+
+    private List<Map<String, Object>> rubric = List.of();
+
+    /** CLOs this question assesses; null leaves existing mappings untouched. */
+    private List<UUID> cloIds;
 }

@@ -330,6 +330,35 @@ app:
     lab-slots: 2
     attempts:  40
 
+  # ── NLP: study assistant + question/paper generator ─────────────────────────
+  # Everything runs on this server — no third-party API is called. The classical
+  # pipeline (PostgreSQL full-text search, OpenNLP, TF-IDF, question templates)
+  # is always on. A local open-weights model served by Ollama writes better
+  # answers and questions when it is reachable; otherwise every feature falls
+  # back to the classical path ("basic mode") instead of failing.
+  #   docker run -d -p 127.0.0.1:11434:11434 -v ollama:/root/.ollama --name ollama ollama/ollama
+  #   docker exec ollama ollama pull qwen2.5:3b-instruct
+  nlp:
+    llm:
+      enabled:            ${NLP_LLM_ENABLED:true}
+      base-url:           ${NLP_LLM_BASE_URL:http://localhost:11434}
+      model:              ${NLP_LLM_MODEL:qwen2.5:3b-instruct}
+      timeout-seconds:    ${NLP_LLM_TIMEOUT:180}
+      # CPU inference: run one request at a time, queue the rest briefly
+      max-concurrency:    ${NLP_LLM_MAX_CONCURRENCY:1}
+      queue-wait-seconds: ${NLP_LLM_QUEUE_WAIT:20}
+      context-tokens:     ${NLP_LLM_CONTEXT_TOKENS:4096}
+    limits:
+      chat-messages-per-hour:  ${NLP_CHAT_PER_HOUR:30}
+      mocks-per-day:           ${NLP_MOCKS_PER_DAY:10}
+      generation-jobs-per-day: ${NLP_GENERATION_PER_DAY:20}
+      assists-per-hour:        ${NLP_ASSISTS_PER_HOUR:100}
+    ingestion:
+      max-file-bytes: ${NLP_MAX_FILE_BYTES:41943040}
+      max-pages:      ${NLP_MAX_PAGES:1500}
+    # Size, timing and outcome of each local-model call (no prompt text).
+    log-file: ${NLP_LLM_LOG_FILE:logs/nlp-llm.log}
+
   files:
     storage:
       endpoint:                  ${MINIO_ENDPOINT:http://localhost:9000}
@@ -352,5 +381,8 @@ logging:
     org.apache.kafka:                        WARN
     software.amazon.awssdk:                  WARN
     com.lms.modules.exams.ClaudeTraffic:     ${EXAM_EXTRACTION_LOG_LEVEL:INFO}   # OFF to stop the Claude traffic log
+    com.lms.infrastructure.nlp.LlmTraffic:   ${NLP_LLM_LOG_LEVEL:INFO}           # OFF to stop the local-model log
+    org.apache.pdfbox:                       WARN
+    org.apache.poi:                          WARN
   pattern:
     console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} : %m%n%wEx"

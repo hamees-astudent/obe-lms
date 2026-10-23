@@ -83,6 +83,7 @@ function eventMeta(type: NotificationEventType): EventMeta {
         label: 'Submission',
       };
     case 'ASSIGNMENT_GRADED':
+    case 'QUIZ_GRADED':
       return {
         icon: <Award className="h-5 w-5 text-indigo-600" />,
         bg: 'bg-indigo-100',

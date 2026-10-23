@@ -13,5 +13,10 @@ public record CreateCloRequest(
         String description,
 
         @Min(1)
-        int orderIndex
+        int orderIndex,
+
+        /** REMEMBER | UNDERSTAND | APPLY | ANALYZE | EVALUATE | CREATE; optional. */
+        @Pattern(regexp = "REMEMBER|UNDERSTAND|APPLY|ANALYZE|EVALUATE|CREATE",
+                 message = "bloomLevel must be a Bloom's taxonomy level")
+        String bloomLevel
 ) {}

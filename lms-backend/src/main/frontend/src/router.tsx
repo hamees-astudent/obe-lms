@@ -34,6 +34,11 @@ const OfferingsPage       = lazy(() => import('@/pages/offerings/OfferingsPage')
 const CohortsPage         = lazy(() => import('@/pages/cohorts/CohortsPage'));
 const GradingScalesPage     = lazy(() => import('@/pages/grading/GradingScalesPage'));
 const CoursesCatalogPage    = lazy(() => import('@/pages/courses/CoursesCatalogPage'));
+const StudyAssistantPage    = lazy(() => import('@/pages/study/StudyAssistantPage'));
+const MockAttemptPage       = lazy(() => import('@/pages/study/MockAttemptPage'));
+const QuestionGeneratorPage = lazy(() => import('@/pages/assessment/QuestionGeneratorPage'));
+const PapersPage            = lazy(() => import('@/pages/papers/PapersPage'));
+const PaperEditorPage       = lazy(() => import('@/pages/papers/PaperEditorPage'));
 const NotFoundPage          = lazy(() => import('@/pages/NotFoundPage'));
 const ForbiddenPage         = lazy(() => import('@/pages/ForbiddenPage'));
 
@@ -168,6 +173,58 @@ const router = createBrowserRouter([
                     <CourseAssessmentPage />
                   </LazyPage>
                 ),
+              },
+              // Study assistant (students)
+              {
+                element: <RequireRole roles={['STUDENT']} />,
+                children: [
+                  {
+                    path: 'study-assistant',
+                    element: (
+                      <LazyPage>
+                        <StudyAssistantPage />
+                      </LazyPage>
+                    ),
+                  },
+                  {
+                    path: 'study-assistant/mocks/:mockId',
+                    element: (
+                      <LazyPage>
+                        <MockAttemptPage />
+                      </LazyPage>
+                    ),
+                  },
+                ],
+              },
+              // Question generator and papers (course staff)
+              {
+                element: <RequireRole roles={['ADMIN', 'TEACHER', 'ASSISTANT']} />,
+                children: [
+                  {
+                    path: 'assessment/:pscId/generate',
+                    element: (
+                      <LazyPage>
+                        <QuestionGeneratorPage />
+                      </LazyPage>
+                    ),
+                  },
+                  {
+                    path: 'assessment/:pscId/papers',
+                    element: (
+                      <LazyPage>
+                        <PapersPage />
+                      </LazyPage>
+                    ),
+                  },
+                  {
+                    path: 'assessment/:pscId/papers/:paperId',
+                    element: (
+                      <LazyPage>
+                        <PaperEditorPage />
+                      </LazyPage>
+                    ),
+                  },
+                ],
               },
               {
                 path: 'exams',

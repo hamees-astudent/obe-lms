@@ -80,7 +80,24 @@ public class NotificationService {
             case ASSIGNMENT_SUBMITTED -> handleAssignmentSubmitted(event);
             case ASSIGNMENT_GRADED    -> handleAssignmentGraded(event);
             case QUIZ_SUBMITTED       -> handleQuizSubmitted(event);
+            case QUIZ_GRADED          -> handleQuizGraded(event);
         }
+    }
+
+    private void handleQuizGraded(AssessmentEvent event) {
+        String score = event.getMarksObtained() != null && event.getTotalMarks() != null
+                ? String.format("%.1f/%.1f", event.getMarksObtained(), event.getTotalMarks())
+                : "N/A";
+        String title = "Quiz Graded — " + event.getAssessmentTitle();
+        String body  = String.format(
+                "Your written answers for quiz '%s' in %s have been marked. Score: %s.",
+                event.getAssessmentTitle(), event.getCourseCode(), score);
+
+        persist(event.getStudentId(), title, body, "QUIZ_GRADED", "QUIZ", event.getAssessmentId());
+
+        emailService.sendEmail(event.getStudentEmail(),
+                "[LMS] " + title,
+                "Dear " + event.getStudentName() + ",\n\n" + body + "\n\n— LMS Team");
     }
 
     /**

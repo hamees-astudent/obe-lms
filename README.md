@@ -12,11 +12,12 @@ A full-stack Learning Management System built with **Spring Boot 3.3** (backend)
 4. [Environment Variables](#environment-variables)
 5. [Default Login Credentials](#default-login-credentials)
 6. [Seeding Demo Data](#seeding-demo-data)
-7. [Running in Development](#running-in-development)
-8. [Building for Production](#building-for-production)
-9. [Project Structure](#project-structure)
-10. [API Overview](#api-overview)
-11. [Observability](#observability)
+7. [Study Assistant and Question Generator](#study-assistant-and-question-generator)
+8. [Running in Development](#running-in-development)
+9. [Building for Production](#building-for-production)
+10. [Project Structure](#project-structure)
+11. [API Overview](#api-overview)
+12. [Observability](#observability)
 
 ---
 
@@ -34,6 +35,8 @@ A full-stack Learning Management System built with **Spring Boot 3.3** (backend)
 | Security | Spring Security + JJWT 0.12 (JWT access + refresh tokens) |
 | Frontend | React 18, Vite 5, TypeScript 5, Tailwind CSS |
 | State management | Zustand 5, TanStack Query 5 |
+| NLP (all on this server) | PostgreSQL full-text search, Apache OpenNLP 2.5, PDFBox 3, Apache POI 5; optional local LLM via Ollama |
+| PDF generation | OpenPDF (transcripts, printed question papers) |
 | E2E tests | Playwright (see `lms-e2e/`) |
 
 ---
@@ -51,6 +54,7 @@ Install the following before proceeding:
 | Redis | 7 | |
 | Apache Kafka | 3.6 | With Zookeeper **or** KRaft mode |
 | MinIO | latest | Any S3-compatible endpoint works |
+| Ollama | latest | **Optional.** Local model for the study assistant and question generator; about 5 GB of free disk (image + model) and 3 GB RAM. Without it those features run in basic (classical NLP) mode |
 
 > **Tip — quick infrastructure with Docker:**
 > If you have Docker installed you can spin up all four services without installing them locally:
@@ -120,6 +124,21 @@ mc mb local/lms-files
 
 Alternatively use the MinIO web console at `http://localhost:9001`.
 
+### Local language model (optional)
+
+The study assistant and question generator run entirely on this server — no third-party API is
+called. Their classical pipeline (PostgreSQL full-text search, Apache OpenNLP, TF-IDF, rule-based
+question templates) always works. A self-hosted open-weights model served by
+[Ollama](https://ollama.com) writes more natural answers and questions when it is running; when it
+is not, every feature falls back to the classical path and the UI shows "basic mode".
+
+```bash
+docker run -d -p 127.0.0.1:11434:11434 -v ollama:/root/.ollama --name ollama ollama/ollama
+docker exec ollama ollama pull qwen2.5:3b-instruct      # about 2 GB; runs on CPU in ~3 GB RAM
+```
+
+On a machine with 16 GB RAM or a GPU, `qwen2.5:7b-instruct` (set `NLP_LLM_MODEL`) gives better results.
+
 ---
 
 ## Environment Variables
@@ -159,6 +178,13 @@ The application reads configuration from environment variables with safe default
 | `EXAM_EXTRACTION_TIMEOUT` | `120` | Seconds to wait for one extraction |
 | `EXAM_EXTRACTION_LOG_FILE` | `logs/claude-extraction.log` | File recording each extraction's prompt, raw Claude response, timing and errors (image logged as size + SHA-256 only). Contains student details — do not share |
 | `EXAM_EXTRACTION_LOG_LEVEL` | `INFO` | Set to `OFF` to stop writing the extraction log |
+| `NLP_LLM_ENABLED` | `true` | Use the local Ollama model when it is reachable; `false` forces classical-only (basic) mode |
+| `NLP_LLM_BASE_URL` | `http://localhost:11434` | Ollama endpoint (keep it on localhost) |
+| `NLP_LLM_MODEL` | `qwen2.5:3b-instruct` | Model for answers, question writing and answer marking |
+| `NLP_LLM_TIMEOUT` | `180` | Seconds one model call may take |
+| `NLP_LLM_MAX_CONCURRENCY` | `1` | Model calls run at once (CPU inference); others wait up to `NLP_LLM_QUEUE_WAIT` seconds, then fall back |
+| `NLP_CHAT_PER_HOUR` / `NLP_MOCKS_PER_DAY` / `NLP_GENERATION_PER_DAY` / `NLP_ASSISTS_PER_HOUR` | `30` / `10` / `20` / `100` | Per-user limits on the NLP features |
+| `NLP_LLM_LOG_FILE` | `logs/nlp-llm.log` | Size, timing and outcome of each model call (no prompt text); `NLP_LLM_LOG_LEVEL=OFF` stops it |
 
 Export variables in your shell, or create a `.env` file and source it before running Maven:
 
@@ -254,6 +280,39 @@ Any extra `--property=value` argument is passed to Spring. For example, `--sprin
 
 ---
 
+## Study Assistant and Question Generator
+
+NLP features that run on this server only (see [Local language model](#local-language-model-optional)).
+
+**Indexing.** A PDF, PowerPoint (.pptx) or Word (.docx) material is read page by page, slide by slide
+or section by section (PDFBox, Apache POI), split into ~350-word passages, tagged with noun-phrase key
+terms (OpenNLP), indexed for PostgreSQL full-text search, and grouped into topics. Teachers see an
+*Indexed / Failed* badge on each document; scanned PDFs without a text layer are reported, not guessed.
+
+**Students — Study Assistant** (sidebar). Questions are answered only from visible material of courses
+the student is enrolled in, with citations ("Lecture 5 · Slide 12") that open the file at that page.
+Off-topic questions are refused without calling a model, questions copied from an open quiz get
+pointers to the material instead of an answer, and answers with a sentence the material does not
+support are flagged. Students can also generate practice quizzes and mock papers, marked instantly
+with feedback; these are stored separately and never reach the transcript.
+
+**Teachers — Generate questions / Question papers** (course assessment page).
+- Choose materials or topics, the mix of MCQ, multiple-select, short and long answers, difficulty,
+  Bloom levels, target CLOs and a **marks limit**. The estimate is checked against the limit before
+  anything is generated, and the course's paper settings cap every paper's marks, questions and time.
+- Every question gets a suggested **Bloom level** (from its action verb), **marks** (type × Bloom ×
+  difficulty, from an editable marks table) and **CLO** (TF-IDF similarity to the CLO statements plus a
+  Bloom-level match), each with its reasoning. Malformed, duplicate or ungrounded questions are dropped.
+- Review, edit, regenerate or reject drafts, then save them into an online quiz or a question paper.
+  *Suggest* in the quiz question editor does the same for questions written by hand.
+- Papers print as up to six **sets (A–F)** as PDF: questions shuffled within sections and MCQ options
+  shuffled, the set code on every page, and a matching answer key per set (or all as one ZIP).
+- Quizzes may now include short and long written answers. Those attempts wait for the teacher, who
+  sees a suggested mark per answer (rubric keyword coverage plus the local model's reading, with
+  disagreements flagged); the transcript counts the attempt only once it is marked.
+
+---
+
 ## Running in Development
 
 ### Option A — backend only (skip React build)
@@ -334,7 +393,8 @@ lms-backend/
 └── src/
     ├── main/
     │   ├── java/com/lms/
-    │   │   ├── config/              # Security, Redis, Jackson, Async config
+    │   │   ├── infrastructure/      # Security, Redis, Kafka, MinIO, web config
+    │   │   │   └── nlp/             # OpenNLP text analysis, Bloom classifier, TF-IDF, local-model gateway
     │   │   ├── shared/              # Cross-module DTOs, events, exceptions
     │   │   └── modules/
     │   │       ├── auth/            # JWT login, refresh, logout, password reset
@@ -348,10 +408,13 @@ lms-backend/
     │   │       ├── files/           # File uploads via MinIO, pre-signed URLs
     │   │       ├── notifications/   # In-app notifications (Kafka-driven)
     │   │       ├── transcript/      # GPA calculation, transcript generation, PDF export
+    │   │       ├── timetable/       # Rooms and the weekly timetable generator
+    │   │       ├── studyai/         # Material indexing, study assistant chat, mock papers,
+    │   │       │                    #   question generator, question papers and printed sets
     │   │       └── users/           # User profiles
     │   └── resources/
     │       ├── application.yml      # All configuration with env-var placeholders
-    │       └── db/migration/        # Flyway SQL migrations (V0001 – V0021)
+    │       └── db/migration/        # Flyway SQL migrations (V0001 – V0030)
     └── test/
         └── java/com/lms/           # Unit and integration tests
 
@@ -381,6 +444,11 @@ All REST endpoints are served under `/api`. Authentication uses `Authorization: 
 | Transcripts | `/api/transcripts`, `/api/admin/transcripts` | ADMIN / STUDENT (own) |
 | Grading Scales | `/api/admin/grading-scales` | ADMIN |
 | Me | `/api/me/*` | Authenticated (own data) |
+| Study assistant | `/api/me/ai/courses`, `/api/me/ai/chat/sessions`, `/api/me/ai/mocks` | STUDENT (enrolled offerings only) |
+| Material index | `/api/offerings/{id}/ai/ingestion`, `/api/offerings/{id}/ai/topics`, `/api/offerings/{id}/ai/reindex` | TEACHER+ (topics: enrolled students too) |
+| Question generator | `/api/offerings/{id}/ai/question-jobs`, `/api/ai/question-drafts/{id}`, `/api/ai/question-assist` | TEACHER+ |
+| Question papers | `/api/offerings/{id}/paper-settings`, `/api/offerings/{id}/papers`, `/api/papers/{id}/print-sets` | TEACHER+ |
+| NLP status | `/api/ai/status` | Authenticated |
 
 ---
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
@@ -19,6 +19,8 @@ import {
   Upload,
   X,
   AlertTriangle,
+  Sparkles,
+  Printer,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { nullIfNotFound } from '@/lib/queries';
@@ -38,6 +40,10 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Input from '@/components/ui/Input';
 import Spinner from '@/components/ui/Spinner';
+import QuestionEditor, { optionLabel, validCorrectIds } from '@/components/assessment/QuestionEditor';
+import QuizReviewModal from '@/components/assessment/QuizReviewModal';
+import BloomBadge from '@/components/ai/BloomBadge';
+import { QUESTION_TYPE_LABELS, isWrittenType } from '@/types/api';
 import type {
   UUID,
   OfferingSummaryResponse,
@@ -1152,305 +1158,9 @@ function QuizFormModal({ pscId, editing, onClose }: QuizFormModalProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Question builder modal (teacher)
-// ---------------------------------------------------------------------------
-const questionSchema = z.object({
-  questionText: z.string().min(1, 'Required'),
-  type: z.enum(['MCQ', 'MSQ']),
-  options: z
-    .array(z.object({ id: z.string().min(1), text: z.string().min(1, 'Required') }))
-    .min(2, 'At least 2 options required'),
-  correctAnswer: z.array(z.string()).min(1, 'Select at least one correct answer'),
-  marks: z.coerce.number().min(0.01, 'Must be > 0'),
-  orderIndex: z.coerce.number().int().min(0).optional().or(z.literal('')),
-  explanation: z.string().optional(),
-});
-type QuestionFormData = z.infer<typeof questionSchema>;
-
-interface QuestionFormModalProps {
-  quizId: UUID;
-  editing?: QuizQuestionResponse | null;
-  nextOrderIndex: number;
-  onClose: () => void;
-}
-
-/** Position label shown to the teacher: A, B, C… by row, whatever the stored id. */
-const optionLabel = (idx: number) => String.fromCharCode(65 + idx);
-
-/** The first unused id from a, b, c… so ids stay unique after rows are removed. */
-function nextOptionId(used: string[]): string {
-  for (let i = 0; i < 26; i++) {
-    const id = String.fromCharCode(97 + i);
-    if (!used.includes(id)) return id;
-  }
-  return `o${used.length + 1}`;
-}
-
-/** Correct answers that actually name one of the options. */
-function validCorrectIds(q: Pick<QuizQuestionResponse, 'options' | 'correctAnswer'>): string[] {
-  const ids = new Set(q.options.map((o) => o.id));
-  return (q.correctAnswer ?? []).filter((id) => ids.has(id));
-}
-
-function QuestionFormModal({ quizId, editing, nextOrderIndex, onClose }: QuestionFormModalProps) {
-  const queryClient = useQueryClient();
-  // Questions saved by the old builder stored row keys, not option ids, as the
-  // correct answer. Drop those on load and say so, rather than show nothing ticked.
-  const savedCorrect = editing ? validCorrectIds(editing) : [];
-  const hadBrokenAnswer = !!editing && savedCorrect.length === 0;
-
-  const { register, handleSubmit, watch, control, setValue, formState: { errors } } =
-    useForm<QuestionFormData>({
-      resolver: zodResolver(questionSchema),
-      defaultValues: editing
-        ? {
-            questionText: editing.questionText,
-            type: editing.type,
-            options: editing.options,
-            correctAnswer: savedCorrect,
-            marks: editing.marks,
-            orderIndex: editing.orderIndex,
-            explanation: editing.explanation ?? '',
-          }
-        : {
-            type: 'MCQ',
-            options: [
-              { id: 'a', text: '' },
-              { id: 'b', text: '' },
-            ],
-            correctAnswer: [],
-            marks: 1,
-            orderIndex: nextOrderIndex,
-          },
-    });
-
-  // `fields[i].id` is react-hook-form's own row key, not the option's id —
-  // useFieldArray overwrites `id`. The old builder used it as the option id,
-  // so the "correct" buttons showed random strings and saved answers that
-  // matched no option. Option ids are read from the form values instead.
-  const { fields, append, remove } = useFieldArray({ control, name: 'options' });
-  const options = watch('options') ?? [];
-  const qType = watch('type');
-  const correctAnswer = watch('correctAnswer') ?? [];
-
-  // Switching to single-answer keeps only the first answer ticked.
-  useEffect(() => {
-    if (qType === 'MCQ' && correctAnswer.length > 1) {
-      setValue('correctAnswer', [correctAnswer[0]], { shouldValidate: true });
-    }
-  }, [qType, correctAnswer, setValue]);
-
-  function toggleCorrect(optId: string) {
-    const next =
-      qType === 'MCQ'
-        ? [optId]
-        : correctAnswer.includes(optId)
-          ? correctAnswer.filter((x) => x !== optId)
-          : [...correctAnswer, optId];
-    setValue('correctAnswer', next, { shouldValidate: true });
-  }
-
-  function removeOption(idx: number) {
-    const id = options[idx]?.id;
-    remove(idx);
-    if (id && correctAnswer.includes(id)) {
-      setValue('correctAnswer', correctAnswer.filter((x) => x !== id), { shouldValidate: true });
-    }
-  }
-
-  const mutation = useMutation({
-    mutationFn: (data: QuestionFormData) => {
-      const body = {
-        ...data,
-        orderIndex:
-          data.orderIndex === '' ? nextOrderIndex : Number(data.orderIndex),
-      };
-      if (editing) {
-        return api
-          .put<QuizQuestionResponse>(`/quiz-questions/${editing.id}`, body)
-          .then((r) => r.data);
-      }
-      return api
-        .post<QuizQuestionResponse>(`/quizzes/${quizId}/questions`, body)
-        .then((r) => r.data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quizzes', quizId, 'questions'] });
-      onClose();
-    },
-  });
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={editing ? 'Edit Question' : 'Add Question'}
-      maxWidth="max-w-xl"
-    >
-      <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
-        {hadBrokenAnswer && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-            <span>
-              This question&apos;s saved correct answer didn&apos;t match any option, so no student
-              could score on it. Mark the correct answer again and save.
-            </span>
-          </div>
-        )}
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Question</label>
-          <textarea
-            {...register('questionText')}
-            rows={3}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-          />
-          {errors.questionText && (
-            <p className="mt-1 text-xs text-red-600">{errors.questionText.message}</p>
-          )}
-        </div>
-
-        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-          <legend className="sr-only">Question type</legend>
-          <span className="font-medium text-gray-700">Type:</span>
-          <label className="flex items-center gap-1.5">
-            <input type="radio" value="MCQ" {...register('type')} />
-            Single answer
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input type="radio" value="MSQ" {...register('type')} />
-            Multiple answers
-          </label>
-        </fieldset>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">
-              Options{' '}
-              <span className="text-xs font-normal text-gray-500">
-                {qType === 'MCQ'
-                  ? '— select the one correct answer'
-                  : '— tick every correct answer'}
-              </span>
-            </span>
-            <button
-              type="button"
-              onClick={() => append({ id: nextOptionId(options.map((o) => o.id)), text: '' })}
-              disabled={fields.length >= 26}
-              className="text-xs font-medium text-primary-600 hover:text-primary-800 disabled:text-gray-300"
-            >
-              + Add option
-            </button>
-          </div>
-          {errors.options?.message && (
-            <p className="mb-1 text-xs text-red-600">{errors.options.message}</p>
-          )}
-          {fields.map((field, idx) => {
-            const optId = options[idx]?.id ?? '';
-            const isCorrect = correctAnswer.includes(optId);
-            const textError = errors.options?.[idx]?.text?.message;
-            return (
-              <div key={field.id} className="mb-2">
-                <div
-                  className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${
-                    isCorrect ? 'border-green-300 bg-green-50' : 'border-transparent'
-                  }`}
-                >
-                  <span className="w-5 flex-shrink-0 text-center text-xs font-semibold text-gray-500">
-                    {optionLabel(idx)}
-                  </span>
-                  <Controller
-                    name={`options.${idx}.text`}
-                    control={control}
-                    render={({ field: f }) => (
-                      <input
-                        {...f}
-                        aria-label={`Option ${optionLabel(idx)}`}
-                        aria-invalid={!!textError}
-                        placeholder={`Option ${optionLabel(idx)}`}
-                        className={`min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm focus:border-primary-500 focus:outline-none ${
-                          textError ? 'border-red-400' : 'border-gray-300'
-                        }`}
-                      />
-                    )}
-                  />
-                  <label className="flex flex-shrink-0 cursor-pointer items-center gap-1 text-xs font-medium text-gray-600">
-                    <input
-                      type={qType === 'MCQ' ? 'radio' : 'checkbox'}
-                      name="correct-answer"
-                      checked={isCorrect}
-                      onChange={() => toggleCorrect(optId)}
-                      className="h-4 w-4 accent-green-600"
-                    />
-                    Correct
-                  </label>
-                  {fields.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => removeOption(idx)}
-                      aria-label={`Remove option ${optionLabel(idx)}`}
-                      className="flex-shrink-0 p-1 text-gray-400 hover:text-red-500"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-                {textError && <p className="ml-9 mt-0.5 text-xs text-red-600">{textError}</p>}
-              </div>
-            );
-          })}
-          {errors.correctAnswer && (
-            <p className="mt-1 text-xs text-red-600">{errors.correctAnswer.message as string}</p>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input
-            label="Marks"
-            type="number"
-            step="0.5"
-            error={errors.marks?.message}
-            {...register('marks')}
-          />
-          <Input
-            label="Order index"
-            type="number"
-            min="0"
-            {...register('orderIndex')}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Explanation (shown after submit)
-          </label>
-          <input
-            {...register('explanation')}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-            placeholder="Optional…"
-          />
-        </div>
-
-        {mutation.error != null && (
-          <p className="text-xs text-red-600">{parseApiError(mutation.error)}</p>
-        )}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={mutation.isPending}>
-            {editing ? 'Save Changes' : 'Add Question'}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Questions panel (teacher — inline expandable)
 // ---------------------------------------------------------------------------
-function QuestionsPanel({ quiz }: { quiz: QuizResponse }) {
+function QuestionsPanel({ quiz, courseId }: { quiz: QuizResponse; courseId?: UUID }) {
   const queryClient = useQueryClient();
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestionResponse | null>(null);
   const [showAddQuestion, setShowAddQuestion] = useState(false);
@@ -1503,11 +1213,20 @@ function QuestionsPanel({ quiz }: { quiz: QuizResponse }) {
               <div className="flex-1 min-w-0">
                 <span className="font-medium text-gray-500 mr-2">{idx + 1}.</span>
                 <span className="text-gray-900">{q.questionText}</span>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  <Badge variant={q.type === 'MCQ' ? 'info' : 'warning'}>{q.type}</Badge>
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  <Badge variant={q.type === 'MCQ' ? 'info' : isWrittenType(q.type) ? 'purple' : 'warning'}>
+                    {QUESTION_TYPE_LABELS[q.type]}
+                  </Badge>
+                  <BloomBadge level={q.bloomLevel} />
+                  {q.aiGenerated && <Badge variant="default">AI-generated</Badge>}
                   <span className="text-xs text-gray-400">{q.marks} marks</span>
                   <span className="text-xs text-gray-300">·</span>
-                  {validCorrectIds(q).length > 0 ? (
+                  {isWrittenType(q.type) ? (
+                    <span className="text-xs text-gray-500">
+                      Marked against a model answer
+                      {(q.rubric ?? []).length > 0 ? ` and ${q.rubric!.length}-point rubric` : ''}
+                    </span>
+                  ) : validCorrectIds(q).length > 0 ? (
                     <span className="text-xs text-green-600">
                       Correct:{' '}
                       {q.options
@@ -1547,8 +1266,10 @@ function QuestionsPanel({ quiz }: { quiz: QuizResponse }) {
       )}
 
       {(showAddQuestion || editingQuestion) && (
-        <QuestionFormModal
+        <QuestionEditor
           quizId={quiz.id}
+          pscId={quiz.pscId}
+          courseId={courseId}
           editing={editingQuestion}
           nextOrderIndex={questions.length}
           onClose={() => {
@@ -1644,7 +1365,7 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deadline]);
 
-  function toggleAnswer(questionId: UUID, optId: string, type: 'MCQ' | 'MSQ') {
+  function toggleAnswer(questionId: UUID, optId: string, type: QuizQuestionResponse['type']) {
     setAnswers((prev) => {
       const cur = prev[questionId] ?? [];
       if (type === 'MCQ') return { ...prev, [questionId]: [optId] };
@@ -1657,7 +1378,7 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
     });
   }
 
-  const answered = questions.filter((q) => (answers[q.id] ?? []).length > 0).length;
+  const answered = questions.filter((q) => (answers[q.id] ?? []).some((a) => a.trim().length > 0)).length;
 
   return (
     <Modal open onClose={() => {}} title={quiz.title} maxWidth="max-w-2xl">
@@ -1699,6 +1420,16 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
                     {q.marks} mark{q.marks !== 1 ? 's' : ''}
                   </span>
                 </div>
+                {isWrittenType(q.type) ? (
+                  <textarea
+                    value={selected[0] ?? ''}
+                    onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: [e.target.value] }))}
+                    rows={q.type === 'LONG_ANSWER' ? 8 : 3}
+                    aria-label={`Answer to question ${idx + 1}`}
+                    placeholder="Write your answer…"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  />
+                ) : (
                 <div className="space-y-2">
                   {q.options.map((opt) => {
                     const isSelected = selected.includes(opt.id);
@@ -1727,6 +1458,7 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
                     );
                   })}
                 </div>
+                )}
                 {q.type === 'MSQ' && (
                   <p className="mt-2 text-xs text-gray-400">Select all that apply</p>
                 )}
@@ -1803,6 +1535,7 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
   const [showQuestions, setShowQuestions] = useState(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
+  const [reviewing, setReviewing] = useState<QuizSubmissionResponse | null>(null);
 
   const mySubmissionQ = useQuery({
     queryKey: ['me', 'quizzes', quiz.id, 'submission'],
@@ -1930,7 +1663,9 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
                 <Spinner size="sm" />
               ) : isSubmitted ? (
                 <div className="text-right">
-                  {mySubmission?.score !== undefined ? (
+                  {mySubmission?.gradingStatus === 'PENDING_REVIEW' ? (
+                    <Badge variant="warning">Awaiting marking</Badge>
+                  ) : mySubmission?.score !== undefined ? (
                     <span className="text-sm font-bold text-green-700">
                       Score: {mySubmission.score}
                     </span>
@@ -1978,7 +1713,10 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
       )}
 
       {/* Questions panel (teacher) */}
-      {isTeacher && showQuestions && <QuestionsPanel quiz={quiz} />}
+      {isTeacher && showQuestions && <QuestionsPanel quiz={quiz} courseId={courseId} />}
+      {reviewing && (
+        <QuizReviewModal quiz={quiz} submission={reviewing} onClose={() => setReviewing(null)} />
+      )}
 
       {/* Submissions panel (teacher) */}
       {isTeacher && showSubmissions && (
@@ -2000,8 +1738,17 @@ function QuizCard({ quiz, isTeacher, pscId, courseId, highlighted, onEdit }: Qui
                     ) : (
                       <Badge variant="warning">In progress</Badge>
                     )}
-                    {s.score !== undefined ? (
-                      <span className="font-semibold text-green-700">{s.score} pts</span>
+                    {s.gradingStatus === 'PENDING_REVIEW' ? (
+                      <Button size="sm" onClick={() => setReviewing(s)}>Mark answers</Button>
+                    ) : s.score !== undefined ? (
+                      <span className="flex items-center gap-2">
+                        <span className="font-semibold text-green-700">{s.score} pts</span>
+                        {!s.autoGraded && (
+                          <button onClick={() => setReviewing(s)} className="text-xs text-primary-600 hover:underline">
+                            Re-mark
+                          </button>
+                        )}
+                      </span>
                     ) : s.submittedAt ? (
                       <Badge variant="info">Awaiting grade</Badge>
                     ) : null}
@@ -2122,9 +1869,25 @@ export default function CourseAssessmentPage() {
             title
           )}
         </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          {isTeacher ? 'Manage assignments and quizzes' : 'Assignments and quizzes for this course'}
-        </p>
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-gray-500">
+            {isTeacher ? 'Manage assignments and quizzes' : 'Assignments and quizzes for this course'}
+          </p>
+          {isTeacher && (
+            <div className="flex gap-2">
+              <Link to={`/assessment/${pscId}/generate`}>
+                <Button size="sm" variant="secondary">
+                  <Sparkles size={14} /> Generate questions
+                </Button>
+              </Link>
+              <Link to={`/assessment/${pscId}/papers`}>
+                <Button size="sm" variant="secondary">
+                  <Printer size={14} /> Question papers
+                </Button>
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

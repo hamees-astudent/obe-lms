@@ -3,6 +3,8 @@ package com.lms.modules.courses;
 import com.lms.infrastructure.messaging.KafkaEventPublisher;
 import com.lms.shared.InstitutionalCodes;
 import com.lms.shared.events.AssessmentEvent;
+import com.lms.shared.events.MaterialChangedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import com.lms.modules.courses.dto.*;
 import com.lms.shared.OfferingStaff;
 import com.lms.shared.CacheNames;
@@ -39,6 +41,7 @@ public class CourseService {
     private final KafkaEventPublisher           kafkaEventPublisher;
     /** Course writes by teachers/assistants are limited to offerings they run. */
     private final OfferingStaff                 offeringStaff;
+    private final ApplicationEventPublisher     events;
 
     // ── Course CRUD ───────────────────────────────────────────────────────────
 
@@ -126,7 +129,12 @@ public class CourseService {
         clo.setTitle(req.title());
         clo.setDescription(req.description());
         clo.setOrderIndex(req.orderIndex());
+        clo.setBloomLevel(blankToNull(req.bloomLevel()));
         return toCloResponse(cloRepository.save(clo));
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 
     @Transactional
@@ -150,6 +158,7 @@ public class CourseService {
         clo.setTitle(req.title());
         clo.setDescription(req.description());
         clo.setOrderIndex(req.orderIndex());
+        clo.setBloomLevel(blankToNull(req.bloomLevel()));
         return toCloResponse(cloRepository.save(clo));
     }
 
@@ -331,8 +340,42 @@ public class CourseService {
         var saved = materialRepository.save(material);
 
         announceMaterial(saved);
+        publishChanged(saved);
 
         return toMaterialResponse(saved);
+    }
+
+    /** Lets the study assistant (re)index the material's file once this commits. */
+    private void publishChanged(CourseMaterial m) {
+        Object key = m.getContent() == null ? null : m.getContent().get("objectKey");
+        events.publishEvent(new MaterialChangedEvent(m.getId(), m.getPsc().getId(), m.getType(),
+                key instanceof String s ? s : null));
+    }
+
+    /** What a user may see of an offering's materials. */
+    public enum MaterialAccess { ALL, VISIBLE_ONLY }
+
+    /**
+     * Staff and admins see every material, hidden ones included; members of
+     * the offering see what is published; anyone else sees nothing. Without
+     * this any signed-in user could list any course's materials, including
+     * ones the teacher had hidden.
+     */
+    public MaterialAccess materialAccess(UUID pscId, UUID userId, boolean isAdmin) {
+        requirePsc(pscId);
+        if (isAdmin || offeringStaff.isStaff(pscId, userId)) return MaterialAccess.ALL;
+        if (pscRepository.isActiveMember(pscId, userId)) return MaterialAccess.VISIBLE_ONLY;
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "You are not enrolled in this course offering.");
+    }
+
+    /** A single material, refusing hidden ones to non-staff as if absent. */
+    public CourseMaterialResponse getMaterial(UUID id, UUID userId, boolean isAdmin) {
+        var m = requireMaterial(id);
+        if (materialAccess(m.getPsc().getId(), userId, isAdmin) == MaterialAccess.VISIBLE_ONLY && !m.isVisible()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course material not found: " + id);
+        }
+        return toMaterialResponse(m);
     }
 
     /**
@@ -386,6 +429,7 @@ public class CourseService {
         if (!wasVisible && saved.isVisible()) {
             announceMaterial(saved);
         }
+        publishChanged(saved);
 
         return toMaterialResponse(saved);
     }
@@ -532,7 +576,7 @@ public class CourseService {
 
     CloResponse toCloResponse(Clo c) {
         return new CloResponse(c.getId(), c.getCourse().getId(), c.getCode(),
-                c.getTitle(), c.getDescription(), c.getOrderIndex(), c.getCreatedAt());
+                c.getTitle(), c.getDescription(), c.getOrderIndex(), c.getBloomLevel(), c.getCreatedAt());
     }
 
     private CloPloMappingResponse toMappingResponse(CloPloMapping m) {

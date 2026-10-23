@@ -34,6 +34,7 @@ public class AssessmentService {
     private final QuizSubmissionRepository         quizSubmissionRepository;
     private final AssignmentCloMappingRepository   assignmentCloMappingRepository;
     private final QuizCloMappingRepository         quizCloMappingRepository;
+    private final QuestionCloMappingRepository     questionCloMappingRepository;
     private final KafkaEventPublisher              kafkaEventPublisher;
     /**
      * Staff writes (and reads of submissions and answer keys) are limited to
@@ -312,44 +313,48 @@ public class AssessmentService {
                                             UUID actorId, boolean isAdmin) {
         Quiz quiz = findQuiz(quizId);
         offeringStaff.require(quiz.getPscId(), actorId, isAdmin);
-        validateQuestion(req.getType(), req.getOptions(), req.getCorrectAnswer());
+        validateQuestion(req.getType(), req.getOptions(), req.getCorrectAnswer(),
+                req.getModelAnswer(), req.getRubric(), req.getMarks());
+        List<UUID> cloIds = validCloIds(quiz.getPscId(), req.getCloIds());
 
         QuizQuestion qq = new QuizQuestion();
         qq.setQuizId(quizId);
-        qq.setQuestionText(req.getQuestionText());
-        qq.setType(req.getType());
-        qq.setOptions(req.getOptions());
-        qq.setCorrectAnswer(req.getCorrectAnswer());
-        qq.setMarks(req.getMarks());
-        qq.setOrderIndex(req.getOrderIndex());
-        qq.setExplanation(req.getExplanation());
+        applyQuestionFields(qq, req.getQuestionText(), req.getType(), req.getOptions(), req.getCorrectAnswer(),
+                req.getMarks(), req.getOrderIndex(), req.getExplanation(), req.getBloomLevel(),
+                req.getDifficulty(), req.getModelAnswer(), req.getRubric());
+        qq.setAiGenerated(req.isAiGenerated());
 
         QuizQuestion saved = questionRepository.save(qq);
+        if (cloIds != null) {
+            questionRepository.flush();
+            questionCloMappingRepository.replace(saved.getId(), cloIds);
+        }
 
         // Update cached total_marks
         quiz.setTotalMarks(quiz.getTotalMarks().add(req.getMarks()));
         quizRepository.save(quiz);
 
-        return toQuestionResponse(saved, true);
+        return toQuestionResponse(saved, true, cloIds == null ? List.of() : cloIds);
     }
 
     public QuizQuestionResponse updateQuestion(UUID questionId, UpdateQuizQuestionRequest req,
                                                UUID actorId, boolean isAdmin) {
         QuizQuestion qq = findQuestion(questionId);
         offeringStaff.require(findQuiz(qq.getQuizId()).getPscId(), actorId, isAdmin);
-        validateQuestion(req.getType(), req.getOptions(), req.getCorrectAnswer());
+        validateQuestion(req.getType(), req.getOptions(), req.getCorrectAnswer(),
+                req.getModelAnswer(), req.getRubric(), req.getMarks());
+        List<UUID> cloIds = validCloIds(findQuiz(qq.getQuizId()).getPscId(), req.getCloIds());
 
         BigDecimal oldMarks = qq.getMarks();
 
-        qq.setQuestionText(req.getQuestionText());
-        qq.setType(req.getType());
-        qq.setOptions(req.getOptions());
-        qq.setCorrectAnswer(req.getCorrectAnswer());
-        qq.setMarks(req.getMarks());
-        qq.setOrderIndex(req.getOrderIndex());
-        qq.setExplanation(req.getExplanation());
+        applyQuestionFields(qq, req.getQuestionText(), req.getType(), req.getOptions(), req.getCorrectAnswer(),
+                req.getMarks(), req.getOrderIndex(), req.getExplanation(), req.getBloomLevel(),
+                req.getDifficulty(), req.getModelAnswer(), req.getRubric());
 
         QuizQuestion saved = questionRepository.save(qq);
+        if (cloIds != null) {
+            questionCloMappingRepository.replace(saved.getId(), cloIds);
+        }
 
         // Update cached total_marks if marks changed
         if (oldMarks.compareTo(req.getMarks()) != 0) {
@@ -358,7 +363,66 @@ public class AssessmentService {
             quizRepository.save(quiz);
         }
 
-        return toQuestionResponse(saved, true);
+        return toQuestionResponse(saved, true,
+                questionCloMappingRepository.findByQuestionIds(List.of(saved.getId()))
+                        .getOrDefault(saved.getId(), List.of()));
+    }
+
+    /** Replaces the CLOs one question is mapped to. */
+    public List<UUID> replaceQuestionCloMappings(UUID questionId, List<UUID> cloIds,
+                                                 UUID actorId, boolean isAdmin) {
+        QuizQuestion qq = findQuestion(questionId);
+        offeringStaff.require(findQuiz(qq.getQuizId()).getPscId(), actorId, isAdmin);
+        List<UUID> valid = validCloIds(findQuiz(qq.getQuizId()).getPscId(), cloIds);
+        questionCloMappingRepository.replace(questionId, valid);
+        return valid;
+    }
+
+    @Transactional(readOnly = true)
+    public List<UUID> listQuestionCloMappings(UUID questionId, UUID actorId, boolean isAdmin) {
+        QuizQuestion qq = findQuestion(questionId);
+        offeringStaff.require(findQuiz(qq.getQuizId()).getPscId(), actorId, isAdmin);
+        return questionCloMappingRepository.findByQuestionIds(List.of(questionId))
+                .getOrDefault(questionId, List.of());
+    }
+
+    private void applyQuestionFields(QuizQuestion qq, String text, String type,
+                                     List<Map<String, Object>> options, List<String> correct,
+                                     BigDecimal marks, int orderIndex, String explanation,
+                                     String bloomLevel, String difficulty, String modelAnswer,
+                                     List<Map<String, Object>> rubric) {
+        boolean written = QuizQuestion.isWrittenType(type);
+        qq.setQuestionText(text);
+        qq.setType(type);
+        qq.setOptions(written ? List.of() : options);
+        qq.setCorrectAnswer(written ? List.of() : correct);
+        qq.setMarks(marks);
+        qq.setOrderIndex(orderIndex);
+        qq.setExplanation(explanation);
+        qq.setBloomLevel(blankToNull(bloomLevel));
+        qq.setDifficulty(blankToNull(difficulty));
+        qq.setModelAnswer(written ? modelAnswer.trim() : blankToNull(modelAnswer));
+        qq.setRubric(written && rubric != null ? rubric : List.of());
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
+    }
+
+    /**
+     * The requested CLOs, refusing any that belong to a different course: a
+     * question in a networks quiz mapped to a databases outcome would count
+     * toward the wrong course's attainment. Null means "leave as is".
+     */
+    private List<UUID> validCloIds(UUID pscId, List<UUID> cloIds) {
+        if (cloIds == null) return null;
+        List<UUID> distinct = cloIds.stream().distinct().toList();
+        Set<UUID> ok = questionCloMappingRepository.cloIdsOfOfferingCourse(pscId, distinct);
+        if (ok.size() != distinct.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Every CLO must belong to this quiz's course");
+        }
+        return distinct;
     }
 
     public void deleteQuestion(UUID questionId, UUID actorId, boolean isAdmin) {
@@ -382,8 +446,13 @@ public class AssessmentService {
                                                     boolean hasStaffRole) {
         boolean includeCorrectAnswers = isAdmin
                 || (hasStaffRole && offeringStaff.isStaff(findQuiz(quizId).getPscId(), userId));
-        return questionRepository.findAllByQuizIdOrderByOrderIndexAsc(quizId)
-                .stream().map(qq -> toQuestionResponse(qq, includeCorrectAnswers)).toList();
+        List<QuizQuestion> questions = questionRepository.findAllByQuizIdOrderByOrderIndexAsc(quizId);
+        Map<UUID, List<UUID>> clos = includeCorrectAnswers
+                ? questionCloMappingRepository.findByQuestionIds(questions.stream().map(QuizQuestion::getId).toList())
+                : Map.of();
+        return questions.stream()
+                .map(qq -> toQuestionResponse(qq, includeCorrectAnswers, clos.getOrDefault(qq.getId(), List.of())))
+                .toList();
     }
 
     // ── Quiz Submissions ──────────────────────────────────────────────────────
@@ -513,10 +582,22 @@ public class AssessmentService {
             }
         }
 
-        BigDecimal score = autoGrade(sub.getQuizId(), sub.getAnswers());
-        sub.setScore(score);
-        sub.setAutoGraded(true);
+        GradeResult grade = autoGrade(sub.getQuizId(), sub.getAnswers());
+        sub.setQuestionScores(grade.perQuestion());
         sub.setSubmittedAt(LocalDateTime.now());
+        if (grade.hasWrittenAnswers()) {
+            // Written answers wait for the teacher; until then there is no
+            // score, so the transcript cannot count a half-marked attempt.
+            sub.setGradingStatus(QuizSubmission.STATUS_PENDING_REVIEW);
+            sub.setScore(null);
+            sub.setAutoGraded(false);
+        } else {
+            sub.setGradingStatus(QuizSubmission.STATUS_GRADED);
+            sub.setScore(grade.objectiveScore());
+            sub.setAutoGraded(true);
+            sub.setGradedAt(sub.getSubmittedAt());
+        }
+        BigDecimal score = sub.getScore();
 
         QuizSubmission saved = quizSubmissionRepository.save(sub);
 
@@ -531,7 +612,7 @@ public class AssessmentService {
                     .assessmentTitle(quiz.getTitle())
                     .courseCode(ctx.getCourseCode())
                     .courseName(ctx.getCourseName())
-                    .marksObtained(score.doubleValue())
+                    .marksObtained(score == null ? null : score.doubleValue())
                     .totalMarks(quiz.getTotalMarks().doubleValue())
                     .build());
         } catch (Exception e) {
@@ -539,6 +620,81 @@ public class AssessmentService {
         }
 
         return toQuizSubmissionResponse(saved);
+    }
+
+    /**
+     * Records the teacher's marks for an attempt's written answers and
+     * finalises its score: the auto-graded choice questions plus these.
+     * Re-grading a graded attempt is allowed and recomputes the total.
+     */
+    public QuizSubmissionResponse gradeQuizSubmission(UUID submissionId, GradeQuizSubmissionRequest req,
+                                                      UUID graderId, boolean isAdmin) {
+        QuizSubmission sub = findQuizSubmission(submissionId);
+        Quiz quiz = findQuiz(sub.getQuizId());
+        offeringStaff.require(quiz.getPscId(), graderId, isAdmin);
+        if (sub.getSubmittedAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This attempt has not been submitted yet");
+        }
+
+        List<QuizQuestion> questions = questionRepository.findAllByQuizIdOrderByOrderIndexAsc(sub.getQuizId());
+        Map<String, Map<String, Object>> scores = new HashMap<>(sub.getQuestionScores());
+        BigDecimal total = BigDecimal.ZERO;
+        for (QuizQuestion qq : questions) {
+            String qid = qq.getId().toString();
+            if (!qq.isWrittenAnswer()) {
+                // Choice questions keep the auto-grader's result; recompute it
+                // if this attempt predates per-question scores.
+                Map<String, Object> auto = scores.computeIfAbsent(qid,
+                        k -> objectiveScore(qq, sub.getAnswers()));
+                total = total.add(new BigDecimal(String.valueOf(auto.get("score"))));
+                continue;
+            }
+            GradeQuizSubmissionRequest.QuestionGrade g = req.getGrades().get(qid);
+            if (g == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Give marks for every written answer (missing question " + (qq.getOrderIndex() + 1) + ")");
+            }
+            if (g.getScore().compareTo(qq.getMarks()) > 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Question " + (qq.getOrderIndex() + 1) + " is worth " + qq.getMarks()
+                        + " marks; " + g.getScore() + " is too many");
+            }
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("score", g.getScore());
+            entry.put("maxMarks", qq.getMarks());
+            entry.put("gradedBy", "TEACHER");
+            if (g.getFeedback() != null && !g.getFeedback().isBlank()) entry.put("feedback", g.getFeedback().trim());
+            scores.put(qid, entry);
+            total = total.add(g.getScore());
+        }
+
+        sub.setQuestionScores(scores);
+        sub.setScore(total.setScale(2, RoundingMode.HALF_UP));
+        sub.setAutoGraded(false);
+        sub.setGradingStatus(QuizSubmission.STATUS_GRADED);
+        sub.setGradedBy(graderId);
+        sub.setGradedAt(LocalDateTime.now());
+        QuizSubmission saved = quizSubmissionRepository.save(sub);
+
+        try {
+            AssessmentContextView ctx = quizRepository.findEventContext(sub.getQuizId(), sub.getStudentId());
+            kafkaEventPublisher.publishAssessmentEvent(AssessmentEvent.builder()
+                    .action(AssessmentEvent.Action.QUIZ_GRADED)
+                    .studentId(sub.getStudentId())
+                    .studentEmail(ctx.getStudentEmail())
+                    .studentName(ctx.getStudentName())
+                    .assessmentId(sub.getQuizId())
+                    .assessmentTitle(quiz.getTitle())
+                    .courseCode(ctx.getCourseCode())
+                    .courseName(ctx.getCourseName())
+                    .marksObtained(saved.getScore().doubleValue())
+                    .totalMarks(quiz.getTotalMarks().doubleValue())
+                    .build());
+        } catch (Exception e) {
+            log.warn("Failed to publish QUIZ_GRADED event: {}", e.getMessage());
+        }
+
+        return toQuizSubmissionResponse(saved, submitters(List.of(sub.getStudentId())).get(sub.getStudentId()));
     }
 
     @Transactional(readOnly = true)
@@ -550,8 +706,17 @@ public class AssessmentService {
 
     @Transactional(readOnly = true)
     public List<QuizSubmissionResponse> listQuizSubmissions(UUID quizId, UUID actorId, boolean isAdmin) {
+        return listQuizSubmissions(quizId, null, actorId, isAdmin);
+    }
+
+    /** @param status a grading status to filter by, or null for every attempt */
+    @Transactional(readOnly = true)
+    public List<QuizSubmissionResponse> listQuizSubmissions(UUID quizId, String status,
+                                                            UUID actorId, boolean isAdmin) {
         offeringStaff.require(findQuiz(quizId).getPscId(), actorId, isAdmin);
-        List<QuizSubmission> subs = quizSubmissionRepository.findAllByQuizId(quizId);
+        List<QuizSubmission> subs = quizSubmissionRepository.findAllByQuizId(quizId).stream()
+                .filter(s -> status == null || status.equals(s.getGradingStatus()))
+                .toList();
         Map<UUID, SubmitterView> who = submitters(subs.stream().map(QuizSubmission::getStudentId).toList());
         return subs.stream().map(sub -> toQuizSubmissionResponse(sub, who.get(sub.getStudentId()))).toList();
     }
@@ -706,7 +871,20 @@ public class AssessmentService {
      * on the question with nothing to show why.
      */
     private void validateQuestion(String type, List<Map<String, Object>> options,
-                                  List<String> correctAnswer) {
+                                  List<String> correctAnswer, String modelAnswer,
+                                  List<Map<String, Object>> rubric, BigDecimal marks) {
+        if (QuizQuestion.isWrittenType(type)) {
+            validateWrittenQuestion(modelAnswer, rubric, marks);
+            return;
+        }
+        if (options == null || options.size() < 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A choice question needs at least two options");
+        }
+        if (correctAnswer == null || correctAnswer.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Mark at least one option as correct");
+        }
         Set<String> optionIds = new HashSet<>();
         for (Map<String, Object> option : options) {
             Object id = option.get("id");
@@ -739,21 +917,72 @@ public class AssessmentService {
     }
 
     /**
+     * A written answer is marked against its model answer, so one is required;
+     * a rubric is optional but may not promise more marks than the question has.
+     */
+    private void validateWrittenQuestion(String modelAnswer, List<Map<String, Object>> rubric, BigDecimal marks) {
+        if (modelAnswer == null || modelAnswer.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A written-answer question needs a model answer to mark against");
+        }
+        if (rubric == null) return;
+        BigDecimal sum = BigDecimal.ZERO;
+        for (Map<String, Object> item : rubric) {
+            if (!(item.get("criterion") instanceof String c) || c.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Every rubric row needs a criterion");
+            }
+            BigDecimal m;
+            try {
+                m = new BigDecimal(String.valueOf(item.get("marks")));
+            } catch (NumberFormatException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Every rubric row needs marks");
+            }
+            if (m.signum() < 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rubric marks cannot be negative");
+            }
+            sum = sum.add(m);
+        }
+        if (sum.compareTo(marks) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The rubric adds up to " + sum.stripTrailingZeros().toPlainString()
+                    + " marks but the question is worth " + marks.stripTrailingZeros().toPlainString());
+        }
+    }
+
+    /**
      * Auto-grades a quiz submission: compares each question's correct answer to
      * the student's selected options using order-insensitive set equality.
      */
-    private BigDecimal autoGrade(UUID quizId, Map<String, List<String>> answers) {
+    private GradeResult autoGrade(UUID quizId, Map<String, List<String>> answers) {
         List<QuizQuestion> questions = questionRepository.findAllByQuizIdOrderByOrderIndexAsc(quizId);
         BigDecimal score = BigDecimal.ZERO;
+        boolean written = false;
+        Map<String, Map<String, Object>> perQuestion = new HashMap<>();
         for (QuizQuestion qq : questions) {
-            List<String> selected = answers.getOrDefault(qq.getId().toString(), List.of());
-            List<String> correct  = qq.getCorrectAnswer();
-            if (new HashSet<>(selected).equals(new HashSet<>(correct))) {
-                score = score.add(qq.getMarks());
+            if (qq.isWrittenAnswer()) {
+                written = true;
+                continue;
             }
+            Map<String, Object> entry = objectiveScore(qq, answers);
+            perQuestion.put(qq.getId().toString(), entry);
+            score = score.add((BigDecimal) entry.get("score"));
         }
-        return score;
+        return new GradeResult(score, perQuestion, written);
     }
+
+    /** Full marks for exactly the correct options, none otherwise. */
+    private static Map<String, Object> objectiveScore(QuizQuestion qq, Map<String, List<String>> answers) {
+        List<String> selected = answers.getOrDefault(qq.getId().toString(), List.of());
+        boolean right = new HashSet<>(selected).equals(new HashSet<>(qq.getCorrectAnswer()));
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("score", right ? qq.getMarks() : BigDecimal.ZERO);
+        entry.put("maxMarks", qq.getMarks());
+        entry.put("gradedBy", "AUTO");
+        return entry;
+    }
+
+    private record GradeResult(BigDecimal objectiveScore, Map<String, Map<String, Object>> perQuestion,
+                               boolean hasWrittenAnswers) {}
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
 
@@ -829,7 +1058,8 @@ public class AssessmentService {
                 .build();
     }
 
-    private QuizQuestionResponse toQuestionResponse(QuizQuestion qq, boolean includeCorrectAnswer) {
+    private QuizQuestionResponse toQuestionResponse(QuizQuestion qq, boolean includeCorrectAnswer,
+                                                    List<UUID> cloIds) {
         return QuizQuestionResponse.builder()
                 .id(qq.getId())
                 .quizId(qq.getQuizId())
@@ -840,6 +1070,12 @@ public class AssessmentService {
                 .marks(qq.getMarks())
                 .orderIndex(qq.getOrderIndex())
                 .explanation(qq.getExplanation())
+                .bloomLevel(qq.getBloomLevel())
+                .difficulty(qq.getDifficulty())
+                .modelAnswer(includeCorrectAnswer ? qq.getModelAnswer() : null)
+                .rubric(includeCorrectAnswer ? qq.getRubric() : null)
+                .cloIds(includeCorrectAnswer ? cloIds : null)
+                .aiGenerated(qq.isAiGenerated())
                 .createdAt(qq.getCreatedAt())
                 .updatedAt(qq.getUpdatedAt())
                 .build();
@@ -863,6 +1099,9 @@ public class AssessmentService {
                 .submittedAt(s.getSubmittedAt())
                 .score(s.getScore())
                 .autoGraded(s.isAutoGraded())
+                .gradingStatus(s.getGradingStatus())
+                .questionScores(s.getQuestionScores())
+                .gradedAt(s.getGradedAt())
                 .createdAt(s.getCreatedAt())
                 .updatedAt(s.getUpdatedAt())
                 .build();

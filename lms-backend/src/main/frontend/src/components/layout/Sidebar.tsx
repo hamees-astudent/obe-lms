@@ -14,6 +14,7 @@ import {
   UsersRound,
   type LucideIcon,
   ScanLine,
+  Sparkles,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import type { Role } from '@/types/api';
@@ -44,6 +45,7 @@ const NAV_SECTIONS: NavSection[] = [
     heading: 'Learning',
     items: [
       { to: '/courses', label: 'Courses', icon: BookOpen },
+      { to: '/study-assistant', label: 'Study Assistant', icon: Sparkles, roles: ['STUDENT'] },
       { to: '/timetable', label: 'Timetable', icon: CalendarDays },
       { to: '/attendance', label: 'Attendance', icon: ClipboardCheck },
       { to: '/assessment', label: 'Assessment', icon: FileText },

@@ -50,6 +50,29 @@ public class QuizSubmission extends BaseEntity {
     @Column(name = "is_auto_graded", nullable = false)
     private boolean autoGraded = false;
 
+    /** IN_PROGRESS | PENDING_REVIEW | GRADED. */
+    @Column(name = "grading_status", nullable = false, length = 16)
+    private String gradingStatus = STATUS_IN_PROGRESS;
+
+    /**
+     * Per-question marks and feedback:
+     * {"<question-uuid>": {"score": 2.5, "feedback": "...", "gradedBy": "AUTO|TEACHER"}}.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "question_scores", columnDefinition = "jsonb", nullable = false)
+    private Map<String, Map<String, Object>> questionScores = new HashMap<>();
+
+    /** Teacher who finalised the written answers; null for auto-graded attempts. */
+    @Column(name = "graded_by")
+    private UUID gradedBy;
+
+    @Column(name = "graded_at")
+    private LocalDateTime gradedAt;
+
+    public static final String STATUS_IN_PROGRESS    = "IN_PROGRESS";
+    public static final String STATUS_PENDING_REVIEW = "PENDING_REVIEW";
+    public static final String STATUS_GRADED         = "GRADED";
+
     /** Timestamp when the student first opened the quiz. */
     @Column(name = "started_at", nullable = false, updatable = false)
     private LocalDateTime startedAt = LocalDateTime.now();

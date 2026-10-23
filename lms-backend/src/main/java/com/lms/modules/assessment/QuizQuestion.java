@@ -29,8 +29,8 @@ public class QuizQuestion extends BaseEntity {
     @Column(name = "question_text", nullable = false, columnDefinition = "TEXT")
     private String questionText;
 
-    /** MCQ | MSQ */
-    @Column(nullable = false, length = 5)
+    /** MCQ | MSQ | SHORT_ANSWER | LONG_ANSWER */
+    @Column(nullable = false, length = 20)
     private String type = "MCQ";
 
     /**
@@ -55,6 +55,38 @@ public class QuizQuestion extends BaseEntity {
 
     @Column(columnDefinition = "TEXT")
     private String explanation;
+
+    /** REMEMBER … CREATE; null when not classified. */
+    @Column(name = "bloom_level", length = 12)
+    private String bloomLevel;
+
+    /** EASY | MEDIUM | HARD; null when not set. */
+    @Column(length = 6)
+    private String difficulty;
+
+    /** Written-answer questions: what a full-marks answer says. Hidden from students. */
+    @Column(name = "model_answer", columnDefinition = "TEXT")
+    private String modelAnswer;
+
+    /**
+     * Written-answer marking scheme: [{"criterion":"...","marks":2,"keywords":["..."]}].
+     * Hidden from students.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb", nullable = false)
+    private List<Map<String, Object>> rubric = List.of();
+
+    @Column(name = "ai_generated", nullable = false)
+    private boolean aiGenerated = false;
+
+    /** Answered in free text and marked by the teacher, not the auto-grader. */
+    public boolean isWrittenAnswer() {
+        return isWrittenType(type);
+    }
+
+    public static boolean isWrittenType(String type) {
+        return "SHORT_ANSWER".equals(type) || "LONG_ANSWER".equals(type);
+    }
 
     @LastModifiedDate
     @Column(name = "updated_at")

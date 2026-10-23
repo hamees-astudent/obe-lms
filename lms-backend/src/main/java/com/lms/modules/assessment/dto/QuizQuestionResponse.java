@@ -22,6 +22,15 @@ public class QuizQuestionResponse {
     BigDecimal marks;
     int orderIndex;
     String explanation;
+    String bloomLevel;
+    String difficulty;
+    /** Staff only, like the answer key. */
+    String modelAnswer;
+    /** Staff only, like the answer key. */
+    List<Map<String, Object>> rubric;
+    /** CLOs mapped to this question; staff only. */
+    List<UUID> cloIds;
+    boolean aiGenerated;
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
 }

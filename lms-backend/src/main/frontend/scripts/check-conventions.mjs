@@ -30,7 +30,9 @@ const RULES = [
     // multipart boundary; either way uploads fail. Let axios choose per request.
     pattern: /['"]Content-Type['"]\s*:/i,
     message: 'Do not set Content-Type by hand — axios picks it from the request body.',
-    exempt: () => false,
+    // lib/ai.ts streams the chat answer with a raw fetch (axios cannot read a
+    // POSTed event stream); fetch sends no JSON Content-Type of its own.
+    exempt: (file) => file === 'lib/ai.ts',
   },
   {
     name: 'no-emoji-in-source',

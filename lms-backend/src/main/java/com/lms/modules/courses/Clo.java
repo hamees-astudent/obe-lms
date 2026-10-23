@@ -41,6 +41,14 @@ public class Clo extends BaseEntity {
     @Column(name = "order_index", nullable = false)
     private int orderIndex;
 
+    /**
+     * Bloom's taxonomy level the outcome is written at (REMEMBER … CREATE);
+     * null when not set. The question generator matches questions to CLOs
+     * partly on this.
+     */
+    @Column(name = "bloom_level", length = 12)
+    private String bloomLevel;
+
     @LastModifiedDate
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
