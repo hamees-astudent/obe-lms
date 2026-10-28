@@ -169,12 +169,6 @@ spring:
     port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
-
-# ── LMS custom properties ──────────────────────────────────────────────────────
-lms:
-  notifications:
-    from-email: ${MAIL_FROM:noreply@lms.local}
-    from-name: ${MAIL_FROM_NAME:LMS Platform}
     properties:
       mail:
         smtp:
@@ -184,13 +178,15 @@ lms:
             required: true
 
   # ── Jackson (REST JSON serialization) ─────────────────────────────────────────
+  # Null fields are kept in responses: the client tells "no value yet" apart
+  # with `=== null` (marks, transcript percentages), so don't set
+  # default-property-inclusion to non_null.
   jackson:
     serialization:
       write-dates-as-timestamps: false   # ISO-8601 strings, not epoch ms
       fail-on-empty-beans: false
     deserialization:
       fail-on-unknown-properties: false  # tolerate extra fields from clients
-    default-property-inclusion: non_null # omit null fields from responses
     time-zone: UTC
 
   # ── Spring MVC ────────────────────────────────────────────────────────────────
@@ -221,6 +217,14 @@ lms:
   modulith:
     # Re-publish events that were stored but not completed before the last shutdown
     republish-outstanding-events-on-restart: true
+
+# ── LMS custom properties ──────────────────────────────────────────────────────
+# Keep this block out of the middle of `spring:` above: everything indented
+# after it would bind under `lms.*` and be silently ignored by Spring.
+lms:
+  notifications:
+    from-email: ${MAIL_FROM:noreply@lms.local}
+    from-name: ${MAIL_FROM_NAME:LMS Platform}
 
 # ── Server ────────────────────────────────────────────────────────────────────
 server:
