@@ -11,6 +11,7 @@ import BloomBadge from '@/components/ai/BloomBadge';
 import CitationChip from '@/components/ai/CitationChip';
 import { fmtMarks } from '@/components/ai/MarksMeter';
 import { isWrittenType, type MockAttemptResponse, type MockQuestionResponse, type MockResult } from '@/types/api';
+import RichText from '@/components/ai/RichText';
 
 /** A practice quiz or paper: answering it, then its marks and feedback. */
 export default function MockAttemptPage() {
@@ -166,7 +167,7 @@ function Attempt({ mock, onGraded }: { mock: MockAttemptResponse; onGraded: (m: 
                     }`}>
                       {String.fromCharCode(65 + oi)}
                     </span>
-                    {o.text}
+                    <RichText text={o.text} compact className="flex-1" />
                   </button>
                 );
               })}
@@ -222,7 +223,7 @@ function ResultCard({ q, n, answer, result }: { q: MockQuestionResponse; n: numb
           {q.modelAnswer && (
             <div className="rounded-lg bg-green-50 p-3">
               <p className="mb-1 text-xs font-semibold text-green-700">Model answer</p>
-              <p className="text-gray-800">{q.modelAnswer}</p>
+              <RichText text={q.modelAnswer} className="text-gray-800" />
             </div>
           )}
         </div>
@@ -239,7 +240,7 @@ function ResultCard({ q, n, answer, result }: { q: MockQuestionResponse; n: numb
                 }`}
               >
                 <span className="w-4 text-xs font-bold text-gray-500">{String.fromCharCode(65 + oi)}</span>
-                <span className="flex-1">{o.text}</span>
+                <RichText text={o.text} compact className="flex-1" />
                 {correct && <CheckCircle2 size={14} className="text-green-600" />}
                 {chosen && !correct && <XCircle size={14} className="text-red-500" />}
               </div>
@@ -248,7 +249,9 @@ function ResultCard({ q, n, answer, result }: { q: MockQuestionResponse; n: numb
         </div>
       )}
       {result?.feedback && <p className="mt-2 text-sm text-gray-700">{result.feedback}</p>}
-      {q.explanation && !isWrittenType(q.type) && <p className="mt-1 text-xs text-gray-500">{q.explanation}</p>}
+      {q.explanation && !isWrittenType(q.type) && (
+        <RichText text={q.explanation} compact className="mt-1 text-xs text-gray-500" />
+      )}
       {q.sources.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-gray-400">Revise:</span>
@@ -263,7 +266,7 @@ function QuestionHeader({ q, n, score, good }: { q: MockQuestionResponse; n: num
   return (
     <div className="flex items-start gap-2">
       <span className="mt-0.5 flex-shrink-0 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-bold text-primary-700">Q{n}</span>
-      <p className="flex-1 text-sm font-medium text-gray-900">{q.questionText}</p>
+      <RichText text={q.questionText} compact className="flex-1 text-sm font-medium text-gray-900" />
       <div className="flex flex-shrink-0 items-center gap-2">
         <BloomBadge level={q.bloomLevel} />
         {score ? (

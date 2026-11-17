@@ -71,4 +71,30 @@ class CourseContextReader {
                 """, new MapSqlParameterSource("psc", pscId).addValue("sid", studentId),
                 (rs, i) -> new OpenQuizQuestion(rs.getString("title"), rs.getString("question_text")));
     }
+
+    /**
+     * Questions the offering already has — in its quizzes, question papers and
+     * recent generator drafts the teacher did not reject — newest first. New
+     * questions are checked against these so a generator run does not hand
+     * back what the course has already asked.
+     */
+    List<String> existingQuestionTexts(UUID pscId, int limit) {
+        return jdbc.queryForList("""
+                SELECT text FROM (
+                    (SELECT qq.question_text AS text, qq.created_at AS at
+                     FROM   quiz_questions qq JOIN quizzes q ON q.id = qq.quiz_id
+                     WHERE  q.psc_id = :psc ORDER BY qq.created_at DESC LIMIT :n)
+                    UNION ALL
+                    (SELECT i.question->>'questionText', i.created_at
+                     FROM   question_paper_items i JOIN question_papers p ON p.id = i.paper_id
+                     WHERE  p.psc_id = :psc ORDER BY i.created_at DESC LIMIT :n)
+                    UNION ALL
+                    (SELECT d.question_text, j.created_at
+                     FROM   generated_question_drafts d JOIN question_generation_jobs j ON j.id = d.job_id
+                     WHERE  j.psc_id = :psc AND d.status <> 'REJECTED' ORDER BY j.created_at DESC LIMIT :n)
+                ) all_questions
+                WHERE  text IS NOT NULL
+                ORDER  BY at DESC LIMIT :n
+                """, new MapSqlParameterSource("psc", pscId).addValue("n", limit), String.class);
+    }
 }

@@ -31,6 +31,17 @@ public interface LlmGateway {
     <T> Optional<T> structured(String system, String user, Map<String, Object> jsonSchema, Class<T> type);
 
     /**
+     * As {@link #structured(String, String, Map, Class)}, stopping after
+     * {@code maxTokens} output tokens. On a CPU, output length is most of a
+     * call's time, so a cap keeps a rambling answer from holding the model for
+     * minutes; output cut off mid-JSON simply fails to parse.
+     */
+    default <T> Optional<T> structured(String system, String user, Map<String, Object> jsonSchema, Class<T> type,
+                                       int maxTokens) {
+        return structured(system, user, jsonSchema, type);
+    }
+
+    /**
      * A streaming chat completion.
      *
      * @param onToken receives each text fragment as it arrives

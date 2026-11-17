@@ -1,11 +1,14 @@
 package com.lms.modules.studyai;
 
+import com.lms.infrastructure.nlp.Stopwords;
 import com.lms.modules.studyai.dto.CitationResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
 
@@ -14,23 +17,54 @@ import java.util.*;
  * full-text search.
  *
  * <p>Each passage's {@code tsv} column holds its stemmed terms (English
- * configuration), headings weighted above body text. A question is parsed with
- * {@code websearch_to_tsquery}, which accepts free text without syntax errors
- * — quotes become phrases, everything else is AND-ed — and passages are
- * ranked by cover density ({@code ts_rank_cd}), which rewards the question's
- * terms appearing close together.
+ * configuration), headings weighted above body text.
  *
- * <p>An AND of every term often matches nothing for a conversational question,
- * so a second pass ORs the question's stemmed terms instead. The result is then
- * diversified (a few passages per material at most) and cut to a token budget
- * so it fits the local model's context window.
+ * <ol>
+ *   <li>The question is reduced to what it is about: instruction words
+ *       ("describe", "explain", "tell me about", "in detail") are dropped, so
+ *       "describe applications of agents in real-world scenarios" and
+ *       "explain agents in a real-world scenario" search for the same
+ *       thing.</li>
+ *   <li>Passages matching <em>any</em> of the remaining stemmed terms are
+ *       candidates. Each is scored by how much of the question it covers, every
+ *       term weighted by its rarity in the offering (a passage that mentions
+ *       "agent" beats one that mentions "world" five times), plus a smaller
+ *       share of cover-density rank ({@code ts_rank_cd}).</li>
+ *   <li>Front matter, reference lists and course-admin slides are pushed down
+ *       ({@link InstructionalFilter}).</li>
+ *   <li>The result is diversified (a few passages per material at most) and
+ *       cut to a token budget so it fits the local model's context window.</li>
+ * </ol>
+ *
+ * <p>The best passage's coverage is returned with the passages, so whether a
+ * question is answerable is decided here, by one deterministic measure, and
+ * not by how a model happens to react to the wording.
  */
 @Service
 @RequiredArgsConstructor
 public class RetrievalService {
 
-    static final int CANDIDATES = 40;
+    static final int CANDIDATES = 60;
     static final int PER_MATERIAL = 3;
+    /** Share of the score that comes from cover-density rank rather than term coverage. */
+    static final double RANK_WEIGHT = 0.3;
+    /** Score multiplier for front matter and course administration. */
+    static final double NON_INSTRUCTIONAL_PENALTY = 0.3;
+    /** Most passages read when sampling a selection for question generation. */
+    static final int GENERATION_SCAN_LIMIT = 6000;
+
+    /**
+     * Words that say what to do with a topic rather than what the topic is.
+     * Matched on whole words, case-insensitively; PostgreSQL's English
+     * configuration already drops ordinary stop words.
+     */
+    static final Set<String> INSTRUCTION_WORDS = Set.of(
+            "describe", "describes", "description", "explain", "explains", "explanation", "discuss", "discussion",
+            "elaborate", "define", "definition", "tell", "give", "provide", "list", "state", "mention", "outline",
+            "brief", "briefly", "detail", "details", "detailed", "overview", "summary", "summarize", "summarise",
+            "illustrate", "example", "examples", "concept", "concepts", "notion", "meaning", "mean", "means",
+            "understand", "understanding", "please", "help", "know", "show", "simple", "simply", "short", "words",
+            "terms", "kindly", "write", "note", "notes", "elaboration", "clarify", "clearly", "work", "works");
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -50,6 +84,11 @@ public class RetrievalService {
                     ? unit + " " + locationStart
                     : unit + "s " + locationStart + "–" + locationEnd;
         }
+    }
+
+    /** Passages and how well the best of them covers the question (0–1). */
+    public record Search(List<RetrievedChunk> chunks, double coverage) {
+        static final Search EMPTY = new Search(List.of(), 0);
     }
 
     private static final String SELECT = """
@@ -72,40 +111,119 @@ public class RetrievalService {
      */
     public List<RetrievedChunk> search(Collection<UUID> pscIds, String question, int tokenBudget,
                                        Collection<UUID> materialIds) {
-        if (pscIds.isEmpty() || question == null || question.isBlank()) return List.of();
-        String q = question.length() > 1000 ? question.substring(0, 1000) : question;
-
-        List<RetrievedChunk> hits = query("websearch_to_tsquery('english', :q)", pscIds, q, materialIds);
-        if (hits.isEmpty()) {
-            String any = jdbc.queryForObject("""
-                    SELECT string_agg(quote_literal(lexeme), ' | ')
-                    FROM   unnest(to_tsvector('english', :q))
-                    """, Map.of("q", q), String.class);
-            if (any != null && !any.isBlank()) {
-                hits = query("to_tsquery('simple', :orq)", pscIds, any, materialIds);
-            }
-        }
-        return select(hits, tokenBudget);
+        return searchScored(pscIds, question, tokenBudget, materialIds).chunks();
     }
 
-    private List<RetrievedChunk> query(String tsquery, Collection<UUID> pscIds, String q,
-                                       Collection<UUID> materialIds) {
+    /** {@link #search}, with the coverage of the best passage. */
+    public Search searchScored(Collection<UUID> pscIds, String question, int tokenBudget,
+                               Collection<UUID> materialIds) {
+        if (pscIds.isEmpty() || question == null || question.isBlank()) return Search.EMPTY;
+        String q = focus(question.length() > 1000 ? question.substring(0, 1000) : question);
+
+        List<String> all = jdbc.queryForList(
+                "SELECT DISTINCT lexeme FROM unnest(to_tsvector('english', :q))", Map.of("q", q), String.class);
+        // "real-world" yields 'real-world', 'real' and 'world'; count the parts only, so a hyphen
+        // in the question neither triples the term's weight nor misses "real world" in the text.
+        List<String> lexemes = all.stream().filter(l -> !l.contains("-")).toList();
+        if (lexemes.isEmpty()) lexemes = all;
+        if (lexemes.isEmpty()) return Search.EMPTY;
+
+        // How many passages of these offerings contain each term: rare terms say more about relevance.
         boolean filter = materialIds != null && !materialIds.isEmpty();
-        String sql = SELECT + """
-                       ts_rank_cd(c.tsv, tq, 32) AS rank
+        MapSqlParameterSource p = new MapSqlParameterSource("pscIds", Sql.uuidArray(pscIds))
+                .addValue("lexemes", Sql.textArray(lexemes))
+                .addValue("materialIds", Sql.uuidArray(filter ? materialIds : List.of()));
+        String scope = """
                 FROM   material_chunks c
                 JOIN   course_materials m ON m.id = c.material_id
-                CROSS  JOIN %s AS tq
                 WHERE  c.psc_id = ANY(CAST(:pscIds AS uuid[]))
                 AND    m.visible
+                """ + (filter ? " AND c.material_id = ANY(CAST(:materialIds AS uuid[]))\n" : "");
+        Map<String, Integer> df = new HashMap<>();
+        int[] total = {0};
+        jdbc.query("WITH scoped AS (SELECT c.tsv " + scope + """
+                )
+                SELECT l.lexeme,
+                       (SELECT COUNT(*) FROM scoped s WHERE s.tsv @@ to_tsquery('simple', quote_literal(l.lexeme))) AS df,
+                       (SELECT COUNT(*) FROM scoped) AS total
+                FROM   unnest(CAST(:lexemes AS text[])) AS l(lexeme)
+                """, p, rs -> {
+                    total[0] = rs.getInt("total");
+                    if (rs.getInt("df") > 0) df.put(rs.getString("lexeme"), rs.getInt("df"));
+                });
+        if (df.isEmpty() || total[0] == 0) return Search.EMPTY;
+
+        // Inverse document frequency. A term the material never uses counts as the rarest
+        // possible: "explain quantum tunnelling" is not answered because a slide says "explain".
+        Map<String, Double> weight = new HashMap<>();
+        double absent = Math.log(1.0 + total[0]);
+        for (String l : lexemes) {
+            Integer n = df.get(l);
+            weight.put(l, n == null ? absent : Math.log(1.0 + (double) total[0] / n));
+        }
+        double weightSum = weight.values().stream().mapToDouble(Double::doubleValue).sum();
+
+        String orq = String.join(" | ", df.keySet().stream().map(RetrievalService::quoteLexeme).toList());
+        List<Candidate> candidates = jdbc.query(SELECT + """
+                       ts_rank_cd(c.tsv, tq, 32) AS rank,
+                       ARRAY(SELECT t FROM unnest(tsvector_to_array(c.tsv)) t
+                             WHERE t = ANY(CAST(:lexemes AS text[]))) AS matched
+                """ + scope.replace("WHERE  c.psc_id", "CROSS  JOIN to_tsquery('simple', :orq) AS tq\n                WHERE  c.psc_id")
+                + """
                 AND    c.tsv @@ tq
-                """.formatted(tsquery)
-                + (filter ? " AND c.material_id = ANY(CAST(:materialIds AS uuid[]))" : "")
-                + " ORDER BY rank DESC, c.chunk_index LIMIT " + CANDIDATES;
-        MapSqlParameterSource p = new MapSqlParameterSource("pscIds", Sql.uuidArray(pscIds))
-                .addValue("q", q).addValue("orq", q)
-                .addValue("materialIds", Sql.uuidArray(filter ? materialIds : List.of()));
-        return jdbc.query(sql, p, ROW);
+                ORDER  BY rank DESC, c.chunk_index
+                LIMIT  %d
+                """.formatted(CANDIDATES * 4), p.addValue("orq", orq),
+                (rs, i) -> new Candidate(ROW.mapRow(rs, i), Sql.texts(rs, "matched")));
+        if (candidates.isEmpty()) return Search.EMPTY;
+
+        double topRank = candidates.stream().mapToDouble(c -> c.chunk().rank()).max().orElse(1);
+        List<RetrievedChunk> scored = new ArrayList<>();
+        double best = 0;
+        for (Candidate c : candidates) {
+            double covered = c.matched().stream().distinct().mapToDouble(l -> weight.getOrDefault(l, 0.0)).sum();
+            double coverage = weightSum <= 0 ? 0 : covered / weightSum;
+            double score = (1 - RANK_WEIGHT) * coverage + RANK_WEIGHT * (topRank <= 0 ? 0 : c.chunk().rank() / topRank);
+            if (InstructionalFilter.isNonInstructional(c.chunk())) {
+                score *= NON_INSTRUCTIONAL_PENALTY;
+            } else {
+                best = Math.max(best, coverage);
+            }
+            scored.add(withRank(c.chunk(), score));
+        }
+        scored.sort(Comparator.comparingDouble(RetrievedChunk::rank).reversed()
+                .thenComparingInt(RetrievedChunk::chunkIndex));
+        List<RetrievedChunk> top = scored.subList(0, Math.min(CANDIDATES, scored.size()));
+        return new Search(select(top, tokenBudget), best);
+    }
+
+    private record Candidate(RetrievedChunk chunk, List<String> matched) {}
+
+    /**
+     * The topic of a question without its instruction words: "Describe the
+     * applications of agents in detail" → "the applications of agents".
+     * Falls back to the question as asked when nothing would be left.
+     */
+    static String focus(String question) {
+        String[] words = question.split("(?<=[^\\p{L}\\p{N}'-])|(?=[^\\p{L}\\p{N}'-])");
+        StringBuilder out = new StringBuilder();
+        int kept = 0;
+        for (String w : words) {
+            if (INSTRUCTION_WORDS.contains(w.toLowerCase(Locale.ROOT))) continue;
+            if (!w.isBlank() && Character.isLetterOrDigit(w.charAt(0))
+                    && !Stopwords.contains(w.toLowerCase(Locale.ROOT))) kept++;
+            out.append(w);
+        }
+        return kept == 0 ? question : out.toString().replaceAll("\\s+", " ").strip();
+    }
+
+    private static String quoteLexeme(String lexeme) {
+        return "'" + lexeme.replace("'", "''").replace("\\", "\\\\") + "'";
+    }
+
+    private static RetrievedChunk withRank(RetrievedChunk c, double rank) {
+        return new RetrievedChunk(c.id(), c.materialId(), c.materialTitle(), c.chunkIndex(), c.locationType(),
+                c.locationStart(), c.locationEnd(), c.heading(), c.content(), c.keyPhrases(), c.tokenEstimate(), rank);
     }
 
     /** At most {@link #PER_MATERIAL} passages per material, best first, within the budget. */
@@ -132,6 +250,20 @@ public class RetrievalService {
      */
     public List<RetrievedChunk> forGeneration(UUID pscId, Collection<UUID> topicIds, Collection<UUID> materialIds,
                                               boolean visibleOnly, int limit) {
+        return forGeneration(pscId, topicIds, materialIds, visibleOnly, limit, 0);
+    }
+
+    /**
+     * As above, but without front matter (preface, contents, references,
+     * course-admin slides), and spread over the whole selection: when it holds
+     * more than {@code limit} passages, every n-th one is taken, starting at a
+     * point chosen by {@code seed}. Taking the first {@code limit} instead
+     * would ask every practice paper about the first chapter.
+     *
+     * @throws ResponseStatusException 422 when the selection holds only front matter
+     */
+    public List<RetrievedChunk> forGeneration(UUID pscId, Collection<UUID> topicIds, Collection<UUID> materialIds,
+                                              boolean visibleOnly, int limit, long seed) {
         MapSqlParameterSource p = new MapSqlParameterSource("psc", pscId)
                 .addValue("topics", Sql.uuidArray(topicIds == null ? List.of() : topicIds))
                 .addValue("materials", Sql.uuidArray(materialIds == null ? List.of() : materialIds))
@@ -150,29 +282,50 @@ public class RetrievalService {
         } else {
             where = "TRUE";
         }
-        return jdbc.query(SELECT + """
+        List<RetrievedChunk> all = jdbc.query(SELECT + """
                        1.0 AS rank
                 FROM   material_chunks c
                 JOIN   course_materials m ON m.id = c.material_id
                 WHERE  c.psc_id = :psc AND (m.visible OR NOT :visibleOnly) AND
-                """ + where + " ORDER BY m.order_index, m.created_at, c.chunk_index LIMIT " + limit, p, ROW);
+                """ + where + " ORDER BY m.order_index, m.created_at, c.chunk_index LIMIT " + GENERATION_SCAN_LIMIT,
+                p, ROW);
+        List<RetrievedChunk> content = all.stream().filter(c -> !InstructionalFilter.isNonInstructional(c)).toList();
+        if (content.isEmpty() && !all.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "The selected material is only front matter (preface, contents, references or course "
+                    + "information). Choose the chapters or lectures that teach the subject.");
+        }
+        return spread(content, limit, seed);
     }
 
-    /** Where passages are — material and page/slide — for citing them. */
+    /** Every n-th passage, so {@code limit} passages cover the whole list; in document order. */
+    static List<RetrievedChunk> spread(List<RetrievedChunk> chunks, int limit, long seed) {
+        if (chunks.size() <= limit) return chunks;
+        double step = chunks.size() / (double) limit;
+        double offset = Math.floorMod(seed, 1000) / 1000.0 * step;
+        List<RetrievedChunk> out = new ArrayList<>(limit);
+        for (int i = 0; i < limit; i++) {
+            int at = (int) Math.min(chunks.size() - 1, Math.floor(offset + i * step));
+            out.add(chunks.get(at));
+        }
+        return out;
+    }
+
+    /** Where passages are — material and page/slide — with the passage text, for citing them. */
     public Map<UUID, CitationResponse> locate(Collection<UUID> chunkIds) {
         if (chunkIds == null || chunkIds.isEmpty()) return Map.of();
         Map<UUID, CitationResponse> out = new HashMap<>();
         jdbc.query("""
-                SELECT c.id, c.material_id, m.title, c.location_type, c.location_start, c.location_end, c.heading
+                SELECT c.id, c.material_id, m.title, c.location_type, c.location_start, c.location_end, c.heading,
+                       c.content
                 FROM   material_chunks c JOIN course_materials m ON m.id = c.material_id
                 WHERE  c.id IN (:ids)
                 """, Map.of("ids", chunkIds), rs -> {
                     RetrievedChunk c = new RetrievedChunk(rs.getObject("id", UUID.class),
                             rs.getObject("material_id", UUID.class), rs.getString("title"), 0,
                             rs.getString("location_type"), rs.getInt("location_start"), rs.getInt("location_end"),
-                            rs.getString("heading"), "", List.of(), 0, 0);
-                    out.put(c.id(), new CitationResponse(null, c.id(), c.materialId(), c.materialTitle(),
-                            c.locationType(), c.locationStart(), c.locationEnd(), c.locationLabel(), c.heading()));
+                            rs.getString("heading"), rs.getString("content"), List.of(), 0, 0);
+                    out.put(c.id(), Citations.citation(0, c));
                 });
         return out;
     }

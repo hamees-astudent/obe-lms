@@ -26,6 +26,7 @@ import {
   type QuizResponse,
   type UUID,
 } from '@/types/api';
+import RichText from '@/components/ai/RichText';
 
 const SECTIONS: Array<{ key: PaperSection; title: string }> = [
   { key: 'CHOICE', title: 'Section A — Multiple choice' },
@@ -169,7 +170,7 @@ function ItemRow({
     <li className="flex items-start gap-3 px-4 py-3">
       <span className="mt-0.5 text-sm font-semibold text-gray-500">{number}.</span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm text-gray-900">{q.questionText}</p>
+        <RichText text={q.questionText} compact className="text-sm text-gray-900" />
         {!isWrittenType(q.type) ? (
           <ol className="mt-1 grid gap-x-6 gap-y-0.5 text-xs text-gray-600 sm:grid-cols-2">
             {q.options.map((o, i) => (

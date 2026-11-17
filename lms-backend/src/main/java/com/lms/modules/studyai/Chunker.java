@@ -18,6 +18,9 @@ import java.util.List;
  *       except that consecutive short slides (a title slide, a one-line
  *       bullet) are merged into one passage citing the range "Slides 4–6".</li>
  *   <li>Splits fall between sentences (OpenNLP), never inside one.</li>
+ *   <li>Code keeps its line breaks and indentation: a run of lines that look
+ *       like code is kept as one unit, never sentence-split or flattened, so
+ *       the assistant can quote it and the student can read it.</li>
  *   <li>Consecutive passages of one long page share about
  *       {@link #OVERLAP_WORDS} words, so a statement that straddles the split
  *       is whole in at least one of them.</li>
@@ -63,9 +66,69 @@ class Chunker {
         return out;
     }
 
+    private static final java.util.regex.Pattern CODE_START = java.util.regex.Pattern.compile(
+            "^(?:def|class|public|private|protected|static|final|int|long|double|float|char|bool|boolean|void|String"
+            + "|for|while|if|else|elif|switch|case|try|catch|return|import|from|package|#include|#define|using"
+            + "|namespace|function|const|let|var|print|printf|cout|cin|System\\.out|SELECT|INSERT|UPDATE|DELETE"
+            + "|CREATE|ALTER|DROP|FROM|WHERE|GROUP|ORDER|JOIN|BEGIN|END|lambda|async|await|struct|template|typedef)\\b.*");
+
+    /** A line of source code rather than prose. */
+    static boolean codeLine(String line) {
+        String t = line.strip();
+        if (t.isEmpty() || t.length() > 160) return false;
+        if (t.endsWith(";") || t.endsWith("{") || t.equals("}") || t.equals("};") || t.startsWith("//")) return true;
+        if (CODE_START.matcher(t).matches()
+                && (t.contains("(") || t.contains("=") || t.endsWith(":") || t.contains("{") || t.contains("<<"))) {
+            return true;
+        }
+        boolean indented = line.startsWith("    ") || line.startsWith("\t");
+        boolean assignment = t.matches("^[A-Za-z_][\\w.\\[\\]]*\\s*(?:[+\\-*/]?=)\\s*\\S.*") && !t.contains(". ");
+        boolean symbols = t.matches(".*[=(){}\\[\\];<>#].*");
+        return assignment || (indented && symbols && !t.matches(".*[.!?]$"));
+    }
+
+    /**
+     * The statements of a text: prose split into sentences, and each run of two
+     * or more code lines kept whole, line breaks and indentation included.
+     */
+    List<String> units(String text) {
+        List<String> out = new ArrayList<>();
+        List<String> prose = new ArrayList<>();
+        List<String> code = new ArrayList<>();
+        for (String line : (text + "\n").split("\n", -1)) {
+            if (codeLine(line) || (!code.isEmpty() && !line.isBlank() && line.startsWith(" "))) {
+                code.add(line.stripTrailing());
+                continue;
+            }
+            if (code.size() >= 2) {
+                if (!prose.isEmpty()) out.addAll(analyzer.sentences(String.join("\n", prose)));
+                prose.clear();
+                out.add(String.join("\n", code));
+            } else {
+                prose.addAll(code);
+            }
+            code.clear();
+            prose.add(line);
+        }
+        if (!prose.isEmpty()) out.addAll(analyzer.sentences(String.join("\n", prose)));
+        return out;
+    }
+
+    /** Sentences joined by spaces; a code block gets lines of its own. */
+    static String join(List<String> units) {
+        StringBuilder sb = new StringBuilder();
+        for (String u : units) {
+            boolean block = u.indexOf('\n') >= 0;
+            if (sb.length() > 0) sb.append(block || sb.charAt(sb.length() - 1) == '\n' ? "\n" : " ");
+            sb.append(u);
+            if (block) sb.append('\n');
+        }
+        return sb.toString().strip();
+    }
+
     /** One long page or section, cut between sentences with a small overlap. */
     private void splitLong(Segment seg, List<Chunk> out) {
-        List<String> sentences = analyzer.sentences(seg.text());
+        List<String> sentences = units(seg.text());
         List<String> current = new ArrayList<>();
         int currentWords = 0;
         for (String sentence : sentences) {
@@ -113,11 +176,11 @@ class Chunker {
     /** Whether what is left is nothing but the overlap already in the last passage. */
     private static boolean sameAsOverlapOnly(List<String> rest, Segment seg, List<Chunk> out) {
         Chunk last = out.get(out.size() - 1);
-        return last.start() == seg.number() && last.content().endsWith(String.join(" ", rest));
+        return last.start() == seg.number() && last.content().endsWith(join(rest));
     }
 
     private void emit(Segment seg, List<String> sentences, List<Chunk> out) {
-        String content = String.join(" ", sentences).strip();
+        String content = join(sentences);
         if (content.isEmpty()) return;
         out.add(build(out.size(), seg.locationType(), seg.number(), seg.number(), seg.heading(), content));
     }
@@ -163,7 +226,9 @@ class Chunker {
             if (seg.heading() != null && !seg.text().startsWith(seg.heading())) {
                 text.append(seg.heading()).append(": ");
             }
-            text.append(seg.text().replace('\n', ' ')).append("\n\n");
+            // Prose lines are layout and are joined; code keeps its lines.
+            boolean code = seg.text().lines().filter(Chunker::codeLine).count() >= 2;
+            text.append(code ? seg.text() : seg.text().replace('\n', ' ')).append("\n\n");
         }
     }
 }

@@ -74,7 +74,7 @@ public class MockService {
             QuestionGenerator.Result r = generator.generate(new QuestionGenerator.Spec(req.pscId(), req.counts(),
                     req.difficulty() == null ? "MEDIUM" : req.difficulty(), List.of(), List.of(),
                     s.mockMaxTotalMarks(), s.maxQuestions(), nonNull(req.topicIds()), nonNull(req.materialIds()),
-                    true, null, s.marks(), new Random().nextLong(), List.of()));
+                    true, null, s.marks(), new Random().nextLong(), earlierQuestions(id, req)));
             if (r.questions().isEmpty()) {
                 repository.failed(id, "No questions could be written from the chosen material. Pick more topics.");
                 return;
@@ -87,6 +87,20 @@ public class MockService {
             log.error("Mock attempt {} could not be generated", id, e);
             repository.failed(id, "The practice paper could not be generated: " + e.getMessage());
         }
+    }
+
+    /** Most of the student's earlier practice papers a new one must not repeat. */
+    static final int EARLIER_ATTEMPTS = 8;
+
+    /** Questions from the student's recent practice papers on this course, so a new paper asks new things. */
+    private List<GenQuestion> earlierQuestions(UUID id, MockRequest req) {
+        UUID studentId = repository.find(id).map(MockRow::studentId).orElse(null);
+        if (studentId == null) return List.of();
+        return repository.list(studentId, req.pscId()).stream()
+                .filter(m -> !m.id().equals(id))
+                .limit(EARLIER_ATTEMPTS)
+                .flatMap(m -> m.questions().stream())
+                .toList();
     }
 
     public List<MockAttemptResponse> list(UUID studentId, UUID pscId) {

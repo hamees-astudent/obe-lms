@@ -33,7 +33,13 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * <p>Every question is built from sentences of the material itself, so its
- * answer is grounded by construction.
+ * answer is grounded by construction. Sentences are only used when they stand
+ * on their own: none that points at a figure or "the example above", opens
+ * with a pronoun, introduces a list, or carries a web address. A blank is
+ * only ever a course term (one of the offering's key phrases) that occurs once
+ * in the sentence, the rest of the sentence must still be about the course's
+ * subject, and distractors must look like the answer — same form, similar
+ * length — so nothing but knowledge tells them apart.
  */
 @Component
 @RequiredArgsConstructor
@@ -53,7 +59,12 @@ class TemplateQuestionGenerator {
             "system", "systems", "number", "time", "value", "values", "data", "result", "results", "way",
             "process", "processes", "thread", "threads", "level", "order", "information", "problem", "method");
     private static final Set<String> WEAK_OPENERS = Set.of("it", "this", "these", "they", "that", "those",
-            "such", "he", "she", "we", "you", "here", "there", "also", "so", "and", "but", "or", "then");
+            "such", "he", "she", "we", "you", "here", "there", "also", "so", "and", "but", "or", "then",
+            "its", "their", "his", "her", "our", "however", "thus", "hence", "therefore", "similarly", "again");
+    private static final Pattern WEB_OR_MAIL = Pattern.compile(
+            "(?i)\\bhttps?://|\\bwww\\.|[\\w.+-]+@[\\w-]+\\.|\\b[a-z0-9-]+\\.(?:com|org|net|edu|gov|pk|uk)\\b");
+    /** A phrase fit to be blanked: letters, digits inside words, spaces and hyphens. */
+    private static final Pattern BLANKABLE = Pattern.compile("[\\p{L}][\\p{L}\\p{N}\\- ]*[\\p{L}\\p{N}]");
 
     private final TextAnalyzer analyzer;
 
@@ -70,20 +81,27 @@ class TemplateQuestionGenerator {
         final Set<String> usedSubjects = new HashSet<>();
         final List<Sentence> sentences = new ArrayList<>();
         final List<Definition> definitions = new ArrayList<>();
+        /** Lower-cased course key phrases, and their stemmed terms: what counts as the subject. */
+        final Set<String> poolPhrases = new HashSet<>();
+        final Set<String> poolTerms = new HashSet<>();
         int cursor;
 
         Run(List<RetrievedChunk> chunks, List<String> phrasePool, long seed) {
             this.chunks = chunks;
             this.pool = phrasePool;
             this.random = new Random(seed);
+            for (String p : phrasePool) {
+                poolPhrases.add(p.toLowerCase(Locale.ROOT));
+                poolTerms.addAll(analyzer.termSet(p));
+            }
+            for (RetrievedChunk c : chunks) {
+                for (String p : c.keyPhrases()) poolTerms.addAll(analyzer.termSet(p));
+            }
             for (RetrievedChunk c : chunks) {
                 List<String> ss = analyzer.sentences(c.content());
                 for (int i = 0; i < ss.size(); i++) {
-                    String s = ss.get(i).strip();
-                    int words = Chunker.wordCount(s);
-                    if (words < 7 || words > 45 || s.endsWith("?") || s.contains("|")) continue;
-                    String first = s.split("\\s+")[0].toLowerCase(Locale.ROOT).replaceAll("\\W", "");
-                    if (WEAK_OPENERS.contains(first)) continue;
+                    String s = ss.get(i).strip().replaceAll("\\s*\\n\\s*", " ");
+                    if (!standsAlone(s)) continue;
                     Sentence sentence = new Sentence(c, s, i);
                     sentences.add(sentence);
                     Matcher m = DEFINITION.matcher(s.replaceAll("^[•\\-*]\\s*", ""));
@@ -96,6 +114,20 @@ class TemplateQuestionGenerator {
             Collections.shuffle(sentences, random);
             Collections.shuffle(definitions, random);
         }
+    }
+
+    /** A sentence a question can be built from without the text around it. */
+    static boolean standsAlone(String s) {
+        int words = Chunker.wordCount(s);
+        if (words < 7 || words > 45 || s.endsWith("?") || s.endsWith(":") || s.contains("|")) return false;
+        String plain = s.replaceAll("^[•\\-*\\d.)\\s]+", "");
+        if (plain.isEmpty() || Character.isLowerCase(plain.charAt(0))) return false;   // a fragment
+        String first = plain.split("\\s+")[0].toLowerCase(Locale.ROOT).replaceAll("\\W", "");
+        if (WEAK_OPENERS.contains(first)) return false;
+        if (WEB_OR_MAIL.matcher(s).find()) return false;
+        if (InstructionalFilter.refersToFigureOrPosition(s) || InstructionalFilter.needsAbsentContext(s)) return false;
+        // Quotation, dialogue or a citation is not a statement of the subject.
+        return !s.matches(".*[\"“”].*[\"“”].*") && !s.matches(".*\\((?:19|20)\\d{2}\\).*");
     }
 
     Run start(List<RetrievedChunk> chunks, List<String> phrasePool, long seed) {
@@ -132,10 +164,17 @@ class TemplateQuestionGenerator {
         // Definitions first: "best describes" questions read better than blanks.
         for (Definition d : run.definitions) {
             if (run.usedSentences.contains(d.sentence().text()) || run.usedSubjects.contains(key(d.term()))) continue;
+            // "A candidate key is … the primary key": the answer would be the only option saying "key".
+            if (sharedStems(d.definition(), d.term()) > 0) continue;
+            int len = Chunker.wordCount(d.definition());
             List<String> distractors = run.definitions.stream()
                     .filter(o -> !key(o.term()).equals(key(d.term())))
                     .map(Definition::definition)
                     .filter(o -> sharedStems(o, d.definition()) < 0.5)
+                    // Similar length, so the answer is not "the long, careful one".
+                    .filter(o -> { int w = Chunker.wordCount(o); return w * 10 >= len * 6 && w * 6 <= len * 10; })
+                    // Nor the only one that names the term being defined.
+                    .filter(o -> sharedStems(o, d.term()) == 0)
                     .distinct().limit(3).toList();
             if (distractors.size() < 3) break;
             run.usedSentences.add(d.sentence().text());
@@ -146,14 +185,15 @@ class TemplateQuestionGenerator {
         for (int i = 0; i < run.sentences.size(); i++) {
             Sentence s = run.sentences.get((run.cursor + i) % run.sentences.size());
             if (run.usedSentences.contains(s.text())) continue;
-            Optional<String> blank = blankPhrase(s);
+            Optional<String> blank = blankPhrase(run, s);
             if (blank.isEmpty() || run.usedSubjects.contains(key(blank.get()))) continue;
             List<String> distractors = distractors(run, blank.get(), s, 3, "HARD".equals(difficulty));
             if (distractors.size() < 3) continue;
             run.cursor = (run.cursor + i + 1) % run.sentences.size();
             run.usedSentences.add(s.text());
             run.usedSubjects.add(key(blank.get()));
-            String stem = s.text().replaceFirst("(?i)" + Pattern.quote(blank.get()), "________");
+            String stem = s.text().replaceFirst("(?i)" + Pattern.quote(blank.get()), "________")
+                    .replaceAll("\\s*\\n\\s*", " ");
             return Optional.of(choice("MCQ", "Fill in the blank: " + stem.replaceAll("^[•\\-*]\\s*", ""),
                     blank.get(), distractors, run.random, s));
         }
@@ -227,23 +267,53 @@ class TemplateQuestionGenerator {
                 .build();
     }
 
-    /** The key phrase of a sentence worth blanking out: multi-word and specific first. */
-    private Optional<String> blankPhrase(Sentence s) {
+    /**
+     * The key phrase of a sentence worth blanking out: a course term, multi-word
+     * and specific first, occurring once in the sentence, and leaving enough of
+     * the subject around the blank to answer from — so "The bunny is ____ in
+     * colour" (an example's detail, not a course term) is never asked.
+     */
+    private Optional<String> blankPhrase(Run run, Sentence s) {
         String lower = s.text().toLowerCase(Locale.ROOT);
         List<String> inSentence = new ArrayList<>();
         for (String p : s.chunk().keyPhrases()) if (lower.contains(p.toLowerCase(Locale.ROOT))) inSentence.add(p);
         if (inSentence.isEmpty()) inSentence.addAll(analyzer.candidatePhrases(s.text()));
         return inSentence.stream()
                 .filter(p -> p.length() >= 4 && Chunker.wordCount(p) <= 4)
+                .filter(p -> BLANKABLE.matcher(p).matches())
+                .filter(p -> Chunker.wordCount(p) > 1 || !GENERIC_SUBJECTS.contains(p.toLowerCase(Locale.ROOT)))
+                // A course term: in the offering's phrase pool, or a multi-word key phrase of this passage.
+                .filter(p -> run.poolPhrases.contains(p.toLowerCase(Locale.ROOT))
+                        || (Chunker.wordCount(p) > 1 && s.chunk().keyPhrases().contains(p)))
+                // Once only: a second occurrence would give the answer away.
+                .filter(p -> occurrences(lower, p.toLowerCase(Locale.ROOT)) == 1)
                 // Never blank the sentence's first word: the stem would start with a gap.
                 .filter(p -> !lower.startsWith(p.toLowerCase(Locale.ROOT)) || Chunker.wordCount(p) > 1)
+                // What is left must still be about the subject.
+                .filter(p -> {
+                    Set<String> rest = new HashSet<>(analyzer.termSet(lower.replace(p.toLowerCase(Locale.ROOT), " ")));
+                    rest.removeAll(analyzer.termSet(p));
+                    return rest.stream().filter(run.poolTerms::contains).count() >= 2;
+                })
                 .max(Comparator.comparingInt((String p) -> Math.min(Chunker.wordCount(p), 3))
                         .thenComparingInt(String::length));
     }
 
-    /** Key phrases that could plausibly fill the blank but do not. */
+    private static int occurrences(String text, String phrase) {
+        int n = 0;
+        for (int i = text.indexOf(phrase); i >= 0; i = text.indexOf(phrase, i + 1)) n++;
+        return n;
+    }
+
+    /**
+     * Key phrases that could plausibly fill the blank but do not: the same form
+     * as the answer (a term among terms, an acronym among acronyms, never a web
+     * address), of similar length and capitalisation.
+     */
     private List<String> distractors(Run run, String correct, Sentence s, int n, boolean sameMaterialFirst) {
         int words = Chunker.wordCount(correct);
+        QuestionValidator.Shape shape = QuestionValidator.shape(correct);
+        boolean capitalised = Character.isUpperCase(correct.charAt(0));
         String sentence = s.text().toLowerCase(Locale.ROOT);
         List<String> candidates = new ArrayList<>();
         List<String> near = new ArrayList<>();
@@ -260,6 +330,10 @@ class TemplateQuestionGenerator {
         for (String p : candidates) {
             if (out.size() >= n) break;
             if (Math.abs(Chunker.wordCount(p) - words) > 1) continue;
+            if (p.length() * 2 < correct.length() || p.length() > correct.length() * 2) continue;
+            if (!BLANKABLE.matcher(p).matches()) continue;
+            if (QuestionValidator.shape(p) != shape) continue;
+            if (Character.isUpperCase(p.charAt(0)) != capitalised) continue;
             if (sentence.contains(p.toLowerCase(Locale.ROOT))) continue;
             if (sharedStems(p, correct) > 0) continue;
             if (out.stream().anyMatch(o -> sharedStems(o, p) > 0)) continue;

@@ -24,10 +24,17 @@ import java.util.*;
  * generator and students' mock quizzes and papers.
  *
  * <ol>
- *   <li>Passages are taken from the chosen topics or materials.</li>
- *   <li>For each type the local model writes questions a few passages at a
- *       time; the template generator fills whatever it could not (or all of
- *       it, when the model is unavailable).</li>
+ *   <li>Passages are taken from the chosen topics or materials, spread over
+ *       the whole selection and without front matter.</li>
+ *   <li>The local model writes the questions a window of passages at a time.
+ *       The windows are spread over the material and each is asked for its
+ *       share of every type, one call per type: the calls on one window
+ *       share their prompt prefix, which Ollama keeps cached, so the passages
+ *       are read once rather than once per call. Each call lists the
+ *       questions already written (and the caller's, e.g. earlier practice
+ *       papers) so the model does not repeat them. The template generator
+ *       fills whatever the model could not (or all of it, when the model is
+ *       unavailable).</li>
  *   <li>Each question is validated ({@link QuestionValidator}): malformed,
  *       ungrounded or duplicate questions are dropped.</li>
  *   <li>Each is annotated: Bloom level from its action verb, marks from the
@@ -41,8 +48,18 @@ import java.util.*;
 @RequiredArgsConstructor
 class QuestionGenerator {
 
-    static final int SOURCE_TOKENS_PER_CALL = 1800;
+    /**
+     * Passage text per window. Reading the prompt is a large share of a CPU
+     * call, so windows are kept small and reused across question types.
+     */
+    static final int SOURCE_TOKENS_PER_CALL = 1100;
     static final int MAX_CHUNKS = 80;
+    /** Questions asked of one window across all types, roughly. */
+    static final int QUESTIONS_PER_WINDOW = 6;
+    /** Most questions requested in one call, per type. */
+    static final Map<String, Integer> BATCH = Map.of("MCQ", 5, "MSQ", 4, "SHORT_ANSWER", 3, "LONG_ANSWER", 2);
+    /** Model calls in a row that return nothing before the rest is left to the templates. */
+    static final int MAX_EMPTY_CALLS = 2;
 
     private final RetrievalService retrieval;
     private final CourseContextReader context;
@@ -63,7 +80,7 @@ class QuestionGenerator {
 
     Result generate(Spec spec) {
         List<RetrievedChunk> chunks = retrieval.forGeneration(spec.pscId(), spec.topicIds(), spec.materialIds(),
-                spec.visibleOnly(), MAX_CHUNKS);
+                spec.visibleOnly(), MAX_CHUNKS, spec.seed());
         if (chunks.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "No indexed course material matches this selection yet. Upload a PDF, PowerPoint or Word "
@@ -82,50 +99,83 @@ class QuestionGenerator {
         List<GenQuestion> seen = new ArrayList<>(spec.avoid() == null ? List.of() : spec.avoid());
         List<String> notes = new ArrayList<>();
         boolean usedLlm = false, usedTemplate = false;
-        int cursor = 0;
 
-        for (String type : MarksPolicy.TYPES) {
-            int want = Math.max(0, spec.counts().getOrDefault(type, 0));
-            if (want == 0) continue;
-            int got = 0;
-            if (llm.available()) {
-                int batch = type.equals("LONG_ANSWER") ? 2 : type.equals("SHORT_ANSWER") ? 3 : 5;
-                int calls = (int) Math.ceil(want / (double) batch) + 1;
-                for (int c = 0; c < calls && got < want; c++) {
-                    List<RetrievedChunk> window = window(chunks, cursor);
-                    cursor = (cursor + window.size()) % chunks.size();
-                    for (GenQuestion q : llmGenerator.generate(type, Math.min(batch, want - got), spec.difficulty(),
-                            spec.bloomLevels(), clos, window, spec.instructions())) {
-                        if (got >= want) break;
-                        QuestionValidator.Result r = validator.validate(q, sourcesOf(q, chunks), seen);
-                        if (!r.ok()) {
-                            log.debug("Dropped generated {}: {}", type, r.rejection());
+        Map<String, Integer> want = new LinkedHashMap<>();
+        for (String type : MarksPolicy.TYPES) want.put(type, Math.max(0, spec.counts().getOrDefault(type, 0)));
+        Map<String, Integer> got = new HashMap<>();
+        int totalWant = want.values().stream().mapToInt(Integer::intValue).sum();
+
+        if (llm.available() && totalWant > 0) {
+            List<List<RetrievedChunk>> windows = windows(chunks, SOURCE_TOKENS_PER_CALL);
+            int spread = Math.max(1, Math.min(windows.size(), (int) Math.ceil(totalWant / (double) QUESTIONS_PER_WINDOW)));
+            List<List<RetrievedChunk>> plan = pick(windows, spread, spec.seed());
+            int emptyCalls = 0;
+            // First pass: each window its share of every type. Then top-ups on further windows.
+            int extraWindows = Math.min(windows.size(), spread + 2);
+            outer:
+            for (int w = 0; w < extraWindows; w++) {
+                List<RetrievedChunk> window = w < plan.size() ? plan.get(w)
+                        : windows.get(Math.floorMod(windows.indexOf(plan.get(plan.size() - 1)) + w - plan.size() + 1,
+                                windows.size()));
+                for (String type : MarksPolicy.TYPES) {
+                    int remaining = want.get(type) - got.getOrDefault(type, 0);
+                    if (remaining <= 0) continue;
+                    int windowsLeft = Math.max(1, plan.size() - w);
+                    int share = w < plan.size() ? (int) Math.ceil(remaining / (double) windowsLeft) : remaining;
+                    while (share > 0) {
+                        int ask = Math.min(share, BATCH.getOrDefault(type, 3));
+                        share -= ask;
+                        List<GenQuestion> written = llmGenerator.generate(type, ask, spec.difficulty(),
+                                spec.bloomLevels(), window, spec.instructions(), avoidList(seen, window));
+                        if (written.isEmpty()) {
+                            if (++emptyCalls >= MAX_EMPTY_CALLS) {
+                                log.info("Local model returned nothing {} times; templates write the rest", emptyCalls);
+                                break outer;
+                            }
                             continue;
                         }
-                        accepted.add(annotate(r.question(), spec, clos));
-                        seen.add(r.question());
-                        got++;
-                        usedLlm = true;
+                        emptyCalls = 0;
+                        for (GenQuestion q : written) {
+                            if (got.getOrDefault(type, 0) >= want.get(type)) break;
+                            QuestionValidator.Result r = validator.validate(q, sourcesOf(q, chunks), seen);
+                            if (!r.ok()) {
+                                log.debug("Dropped generated {}: {}", type, r.rejection());
+                                continue;
+                            }
+                            accepted.add(annotate(r.question(), spec, clos));
+                            seen.add(r.question());
+                            got.merge(type, 1, Integer::sum);
+                            usedLlm = true;
+                        }
                     }
                 }
+                if (want.entrySet().stream().allMatch(e -> got.getOrDefault(e.getKey(), 0) >= e.getValue())) break;
             }
-            if (got < want) {
-                for (GenQuestion q : templates.generate(run, type, (want - got) * 2, spec.difficulty(), spec.bloomLevels())) {
-                    if (got >= want) break;
+        }
+
+        for (String type : MarksPolicy.TYPES) {
+            int wanted = want.get(type);
+            int have = got.getOrDefault(type, 0);
+            if (wanted == 0) continue;
+            if (have < wanted) {
+                for (GenQuestion q : templates.generate(run, type, (wanted - have) * 3, spec.difficulty(), spec.bloomLevels())) {
+                    if (have >= wanted) break;
                     QuestionValidator.Result r = validator.validate(q, sourcesOf(q, chunks), seen);
                     if (!r.ok()) continue;
                     accepted.add(annotate(r.question(), spec, clos));
                     seen.add(r.question());
-                    got++;
+                    have++;
                     usedTemplate = true;
                 }
             }
-            if (got < want) {
-                notes.add("Only " + got + " of " + want + " " + label(type)
-                        + " could be written from this material.");
+            if (have < wanted) {
+                notes.add("Only " + have + " of " + wanted + " " + label(type)
+                        + " could be written from this material without repeating or weakening questions.");
             }
         }
 
+        // Types were written window by window; present them grouped by type, as a paper is.
+        accepted.sort(Comparator.comparingInt(q -> MarksPolicy.TYPES.indexOf(q.getType())));
         List<GenQuestion> fitted = PaperAssembler.fit(accepted, GenQuestion::getMarks, GenQuestion::getCloIds,
                 GenQuestion::getBloomLevel, spec.maxTotalMarks(), spec.maxQuestions(), spec.targetCloIds());
         if (fitted.size() < accepted.size()) {
@@ -137,17 +187,55 @@ class QuestionGenerator {
         return new Result(fitted, mode, notes);
     }
 
-    /** Consecutive passages starting at {@code from}, up to the per-call source budget. */
-    private static List<RetrievedChunk> window(List<RetrievedChunk> chunks, int from) {
-        List<RetrievedChunk> out = new ArrayList<>();
+    /** Consecutive, non-overlapping windows of passages, each within the source budget, in document order. */
+    static List<List<RetrievedChunk>> windows(List<RetrievedChunk> chunks, int tokenBudget) {
+        List<List<RetrievedChunk>> out = new ArrayList<>();
+        List<RetrievedChunk> current = new ArrayList<>();
         int tokens = 0;
-        for (int i = 0; i < chunks.size(); i++) {
-            RetrievedChunk c = chunks.get((from + i) % chunks.size());
-            if (!out.isEmpty() && tokens + c.tokenEstimate() > SOURCE_TOKENS_PER_CALL) break;
-            out.add(c);
+        for (RetrievedChunk c : chunks) {
+            if (!current.isEmpty() && tokens + c.tokenEstimate() > tokenBudget) {
+                out.add(current);
+                current = new ArrayList<>();
+                tokens = 0;
+            }
+            current.add(c);
             tokens += c.tokenEstimate();
         }
+        if (!current.isEmpty()) out.add(current);
         return out;
+    }
+
+    /** {@code n} windows spread evenly over the material, starting at a point chosen by the seed. */
+    static List<List<RetrievedChunk>> pick(List<List<RetrievedChunk>> windows, int n, long seed) {
+        double step = windows.size() / (double) n;
+        double offset = Math.floorMod(seed, 997) / 997.0 * step;
+        List<List<RetrievedChunk>> out = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            List<RetrievedChunk> w = windows.get((int) Math.min(windows.size() - 1, Math.floor(offset + i * step)));
+            if (!out.contains(w)) out.add(w);
+        }
+        return out;
+    }
+
+    /**
+     * The existing questions worth showing the model before it writes from
+     * {@code window}: everything written in this run, then the caller's
+     * questions that share the most terms with the window.
+     */
+    List<String> avoidList(List<GenQuestion> seen, List<RetrievedChunk> window) {
+        if (seen.isEmpty()) return List.of();
+        Set<String> windowTerms = new HashSet<>();
+        window.forEach(c -> windowTerms.addAll(analyzer.termSet(c.content())));
+        record Scored(String text, long overlap) {}
+        return seen.stream()
+                .filter(q -> q.getQuestionText() != null)
+                .map(q -> new Scored(q.getQuestionText(),
+                        analyzer.termSet(q.getQuestionText()).stream().filter(windowTerms::contains).count()))
+                .filter(sc -> sc.overlap() >= 2)
+                .sorted(Comparator.comparingLong(Scored::overlap).reversed())
+                .limit(LlmQuestionGenerator.AVOID_IN_PROMPT)
+                .map(Scored::text)
+                .toList();
     }
 
     private static List<RetrievedChunk> sourcesOf(GenQuestion q, List<RetrievedChunk> chunks) {

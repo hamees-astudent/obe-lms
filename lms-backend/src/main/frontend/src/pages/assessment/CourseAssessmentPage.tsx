@@ -55,6 +55,7 @@ import type {
   CloMappingResponse,
   SubmissionType,
 } from '@/types/api';
+import RichText from '@/components/ai/RichText';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1415,7 +1416,7 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
                   <span className="mt-0.5 flex-shrink-0 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-bold text-primary-700">
                     Q{idx + 1}
                   </span>
-                  <p className="text-sm font-medium text-gray-900">{q.questionText}</p>
+                  <RichText text={q.questionText} compact className="text-sm font-medium text-gray-900" />
                   <span className="ml-auto flex-shrink-0 text-xs text-gray-400">
                     {q.marks} mark{q.marks !== 1 ? 's' : ''}
                   </span>
@@ -1453,7 +1454,7 @@ function QuizPlayer({ quiz, submission, onClose }: QuizPlayerProps) {
                         >
                           {opt.id.toUpperCase()}
                         </span>
-                        {opt.text}
+                        <RichText text={opt.text} compact className="flex-1" />
                       </button>
                     );
                   })}

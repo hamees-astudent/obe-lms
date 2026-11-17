@@ -3,7 +3,7 @@ package com.lms.infrastructure.nlp;
 import java.util.Set;
 
 /** English function words, plus filler common in lecture slides. */
-final class Stopwords {
+public final class Stopwords {
 
     private Stopwords() {}
 
@@ -27,7 +27,7 @@ final class Stopwords {
             "type", "types", "kind", "kinds", "part", "parts", "case", "cases", "number", "set", "two",
             "three", "first", "second", "new", "well", "make", "makes", "made", "get", "gets", "see");
 
-    static boolean contains(String lowerCaseWord) {
+    public static boolean contains(String lowerCaseWord) {
         return WORDS.contains(lowerCaseWord);
     }
 }

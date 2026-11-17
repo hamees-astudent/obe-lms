@@ -56,10 +56,17 @@ public class S3Config {
 
     // ── S3Presigner ───────────────────────────────────────────────────────────
 
+    /**
+     * Signs URLs for the browser, so it targets the public endpoint when one is
+     * set: the host is part of the signature, and {@code localhost} means the
+     * viewer's own machine, not this server.
+     */
     @Bean
     public S3Presigner s3Presigner(StorageProperties props) {
+        String endpoint = props.getPublicEndpoint() == null || props.getPublicEndpoint().isBlank()
+                ? props.getEndpoint() : props.getPublicEndpoint();
         return S3Presigner.builder()
-                .endpointOverride(URI.create(props.getEndpoint()))
+                .endpointOverride(URI.create(endpoint))
                 .credentialsProvider(credentials(props))
                 .region(Region.of(props.getRegion()))
                 .serviceConfiguration(S3Configuration.builder()

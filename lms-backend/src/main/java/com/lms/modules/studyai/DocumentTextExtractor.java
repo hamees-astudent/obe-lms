@@ -198,15 +198,21 @@ class DocumentTextExtractor {
         return first;
     }
 
-    /** Normalises whitespace and strips control characters, keeping line breaks. */
+    /**
+     * Normalises whitespace and strips control characters, keeping line breaks
+     * and the indentation at the start of a line (code depends on it).
+     */
     static String clean(String text) {
         if (text == null) return "";
-        return text.replace(' ', ' ')
+        return text.replace('\u00A0', ' ')
+                .replace("\r\n", "\n")
                 .replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", "")
                 .replaceAll("(?<=\\w)-\\n(?=\\w)", "")       // hyphenated line breaks
-                .replaceAll("[ \\t]+", " ")
-                .replaceAll(" *\\n *", "\n")
+                .replace("\t", "    ")
+                .replaceAll("(?<=\\S)[ ]{2,}", " ")             // runs of spaces inside a line, not before it
+                .replaceAll(" +\\n", "\n")
                 .replaceAll("\\n{3,}", "\n\n")
-                .strip();
+                .replaceAll("^(?:[ ]*\\n)+", "")
+                .stripTrailing();
     }
 }

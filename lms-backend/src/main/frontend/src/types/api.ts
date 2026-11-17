@@ -1128,6 +1128,8 @@ export interface CitationResponse {
   /** "Slide 12", "Pages 4–5" */
   locationLabel: string;
   heading?: string;
+  /** The cited passage itself, trimmed; absent on citations stored before excerpts were kept. */
+  excerpt?: string | null;
 }
 
 export interface StudyCourseResponse {

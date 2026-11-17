@@ -16,6 +16,7 @@ import {
   type QuizResponse,
   type QuizSubmissionResponse,
 } from '@/types/api';
+import RichText from '@/components/ai/RichText';
 
 /**
  * Marks the written answers of one attempt. Each answer comes with a suggested
@@ -116,9 +117,11 @@ export default function QuizReviewModal({
               const g = grades[q.id] ?? { score: '', feedback: '' };
               return (
                 <div key={q.id} className="rounded-lg border border-gray-200 p-3">
-                  <p className="text-sm font-medium text-gray-900">
-                    Q{q.orderIndex + 1}. {q.questionText} <span className="text-xs text-gray-400">({fmtMarks(q.marks)} marks)</span>
-                  </p>
+                  <div className="flex items-start gap-1 text-sm font-medium text-gray-900">
+                    <span>Q{q.orderIndex + 1}.</span>
+                    <RichText text={q.questionText} compact className="flex-1" />
+                    <span className="text-xs text-gray-400">({fmtMarks(q.marks)} marks)</span>
+                  </div>
                   <div className="mt-2 grid gap-2 md:grid-cols-2">
                     <div className="rounded bg-gray-50 p-2 text-sm">
                       <p className="mb-1 text-xs font-semibold text-gray-500">Student's answer</p>
@@ -126,7 +129,7 @@ export default function QuizReviewModal({
                     </div>
                     <div className="rounded bg-green-50 p-2 text-sm">
                       <p className="mb-1 text-xs font-semibold text-green-700">Model answer</p>
-                      <p>{q.modelAnswer}</p>
+                      {q.modelAnswer && <RichText text={q.modelAnswer} compact />}
                       {(q.rubric ?? []).length > 0 && (
                         <ul className="mt-1 list-disc pl-4 text-xs text-gray-600">
                           {q.rubric!.map((r, i) => (

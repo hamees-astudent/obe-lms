@@ -106,20 +106,34 @@ public class OllamaLlmGateway implements LlmGateway {
 
     @Override
     public <T> Optional<T> structured(String system, String user, Map<String, Object> jsonSchema, Class<T> type) {
+        return structured(system, user, jsonSchema, type, -1);
+    }
+
+    @Override
+    public <T> Optional<T> structured(String system, String user, Map<String, Object> jsonSchema, Class<T> type,
+                                      int maxTokens) {
         if (!available()) return Optional.empty();
         if (!acquire()) return Optional.empty();
         long started = System.nanoTime();
         try {
-            Map<String, Object> body = body(system, List.of(Message.user(user)), false);
+            Map<String, Object> body = body(system, List.of(Message.user(user)), false, maxTokens);
             body.put("format", jsonSchema);
             HttpResponse<String> res = http.send(post(body), HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() != 200) {
                 record("structured", "http_" + res.statusCode(), started, 0);
                 return Optional.empty();
             }
-            String content = mapper.readTree(res.body()).path("message").path("content").asText("");
-            record("structured", "ok", started, content.length());
-            return Optional.of(mapper.readValue(content, type));
+            JsonNode reply = mapper.readTree(res.body());
+            String content = reply.path("message").path("content").asText("");
+            boolean cut = "length".equals(reply.path("done_reason").asText(""));
+            record("structured", cut ? "truncated" : "ok", started, content.length());
+            try {
+                return Optional.of(mapper.readValue(content, type));
+            } catch (Exception parse) {
+                // Output stopped by the token cap mid-item: keep the items that were finished.
+                String salvaged = salvage(content);
+                return salvaged == null ? Optional.empty() : Optional.of(mapper.readValue(salvaged, type));
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return Optional.empty();
@@ -139,7 +153,7 @@ public class OllamaLlmGateway implements LlmGateway {
         long started = System.nanoTime();
         StringBuilder answer = new StringBuilder();
         try {
-            HttpResponse<InputStream> res = http.send(post(body(system, messages, true)),
+            HttpResponse<InputStream> res = http.send(post(body(system, messages, true, -1)),
                     HttpResponse.BodyHandlers.ofInputStream());
             if (res.statusCode() != 200) {
                 res.body().close();
@@ -175,6 +189,46 @@ public class OllamaLlmGateway implements LlmGateway {
         }
     }
 
+    /**
+     * JSON cut off inside an array of objects — {@code {"items":[{...},{...},{"q":"Wh} —
+     * closed after the last complete object; null when there is none.
+     */
+    static String salvage(String json) {
+        int depth = 0, lastComplete = -1;
+        boolean inString = false, escaped = false;
+        StringBuilder closers = new StringBuilder();
+        String closeAtLast = null;
+        for (int i = 0; i < json.length(); i++) {
+            char ch = json.charAt(i);
+            if (inString) {
+                if (escaped) escaped = false;
+                else if (ch == '\\') escaped = true;
+                else if (ch == '"') inString = false;
+                continue;
+            }
+            switch (ch) {
+                case '"' -> inString = true;
+                case '{', '[' -> {
+                    closers.append(ch == '{' ? '}' : ']');
+                    depth++;
+                }
+                case '}', ']' -> {
+                    if (depth == 0) return null;
+                    closers.setLength(closers.length() - 1);
+                    depth--;
+                    // An element of a top-level array just closed: a safe place to cut.
+                    if (ch == '}' && depth == 2) {
+                        lastComplete = i;
+                        closeAtLast = new StringBuilder(closers).reverse().toString();
+                    }
+                }
+                default -> { }
+            }
+        }
+        if (depth == 0 || lastComplete < 0) return null;
+        return json.substring(0, lastComplete + 1) + closeAtLast;
+    }
+
     private boolean acquire() {
         try {
             if (slots.tryAcquire(config.getQueueWaitSeconds(), TimeUnit.SECONDS)) return true;
@@ -187,7 +241,7 @@ public class OllamaLlmGateway implements LlmGateway {
         }
     }
 
-    private Map<String, Object> body(String system, List<Message> messages, boolean stream) {
+    private Map<String, Object> body(String system, List<Message> messages, boolean stream, int maxTokens) {
         List<Map<String, String>> all = new ArrayList<>();
         all.add(Map.of("role", "system", "content", system));
         for (Message m : messages) all.add(Map.of("role", m.role(), "content", m.content()));
@@ -196,9 +250,12 @@ public class OllamaLlmGateway implements LlmGateway {
         body.put("messages", all);
         body.put("stream", stream);
         body.put("keep_alive", "30m");
-        body.put("options", Map.of(
-                "temperature", config.getTemperature(),
-                "num_ctx", config.getContextTokens()));
+        // Every call uses the same num_ctx: a different value makes Ollama reload the model.
+        Map<String, Object> options = new LinkedHashMap<>();
+        options.put("temperature", config.getTemperature());
+        options.put("num_ctx", config.getContextTokens());
+        if (maxTokens > 0) options.put("num_predict", maxTokens);
+        body.put("options", options);
         return body;
     }
 

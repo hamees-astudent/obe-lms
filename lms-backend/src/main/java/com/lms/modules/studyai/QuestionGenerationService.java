@@ -33,6 +33,9 @@ import java.util.concurrent.RejectedExecutionException;
 @RequiredArgsConstructor
 public class QuestionGenerationService {
 
+    /** Most existing questions of the offering a new job is checked against. */
+    static final int EXISTING_QUESTIONS = 300;
+
     private final GenerationRepository repository;
     private final QuestionGenerator generator;
     private final PaperSettingsService settings;
@@ -119,7 +122,10 @@ public class QuestionGenerationService {
         JobRow job = repository.findJob(jobId).orElseThrow();
         repository.markRunning(jobId);
         try {
-            QuestionGenerator.Result result = generator.generate(spec(job.pscId(), req, s, List.of()));
+            // Not what the course has already asked, in its quizzes, papers or earlier drafts.
+            List<GenQuestion> existing = context.existingQuestionTexts(job.pscId(), EXISTING_QUESTIONS).stream()
+                    .map(t -> GenQuestion.builder().questionText(t).build()).toList();
+            QuestionGenerator.Result result = generator.generate(spec(job.pscId(), req, s, existing));
             if (result.questions().isEmpty()) {
                 repository.markFailed(jobId, "No questions could be written from the selected material. "
                         + "Choose more topics or materials.");
@@ -189,8 +195,10 @@ public class QuestionGenerationService {
                 AiRateLimiter.Window.HOUR);
         PaperSettingsService.Settings s = settings.settings(job.pscId());
         GenerationRequest req = requestOf(job, Map.of(d.question().getType(), 1));
-        List<GenQuestion> avoid = repository.drafts(d.jobId()).stream()
-                .map(r -> GenQuestion.builder().questionText(r.questionText()).build()).toList();
+        List<GenQuestion> avoid = new ArrayList<>(repository.drafts(d.jobId()).stream()
+                .map(r -> GenQuestion.builder().questionText(r.questionText()).build()).toList());
+        context.existingQuestionTexts(job.pscId(), EXISTING_QUESTIONS)
+                .forEach(t -> avoid.add(GenQuestion.builder().questionText(t).build()));
         QuestionGenerator.Result result = generator.generate(spec(job.pscId(),
                 new GenerationRequest(req.materialIds(), req.topicIds(), req.counts(), req.difficulty(),
                         req.bloomLevels(), req.targetCloIds(), BigDecimal.valueOf(1000), null), s, avoid));

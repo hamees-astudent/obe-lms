@@ -11,8 +11,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app.files.storage")
 public class StorageProperties {
 
-    /** HTTP(S) endpoint, e.g. {@code http://localhost:9000} for local MinIO. */
+    /** HTTP(S) endpoint the server uses, e.g. {@code http://localhost:9000} for local MinIO. */
     private String endpoint;
+
+    /**
+     * The endpoint as browsers reach it, used to sign pre-signed URLs, e.g.
+     * {@code https://files.example.edu}. A URL signed for {@code localhost}
+     * only works on the server itself, so set this whenever the app is used
+     * from other machines. Blank means {@link #endpoint}.
+     */
+    private String publicEndpoint;
 
     /** Access key / AWS access key ID. */
     private String accessKey;

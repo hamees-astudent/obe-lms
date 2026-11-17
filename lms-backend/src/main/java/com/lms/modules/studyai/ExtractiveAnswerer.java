@@ -23,6 +23,8 @@ import java.util.*;
 class ExtractiveAnswerer {
 
     static final int MAX_SENTENCES = 4;
+    /** For "explain how…" questions: enough sentences to carry a mechanism, not just a definition. */
+    static final int MAX_SENTENCES_DETAILED = 8;
 
     private final TextAnalyzer analyzer;
 
@@ -30,7 +32,14 @@ class ExtractiveAnswerer {
 
     /** The answer text with [S#] markers, or empty when no sentence matches the question. */
     Optional<String> answer(String question, List<RetrievedChunk> chunks) {
-        List<String> queryTerms = analyzer.terms(question);
+        return answer(question, chunks, false);
+    }
+
+    /** As above; a detailed answer quotes up to {@link #MAX_SENTENCES_DETAILED} sentences. */
+    Optional<String> answer(String question, List<RetrievedChunk> chunks, boolean detailed) {
+        int max = detailed ? MAX_SENTENCES_DETAILED : MAX_SENTENCES;
+        List<String> focusTerms = analyzer.terms(RetrievalService.focus(question));
+        List<String> queryTerms = focusTerms.isEmpty() ? analyzer.terms(question) : focusTerms;
         if (queryTerms.isEmpty() || chunks.isEmpty()) return Optional.empty();
 
         List<Candidate> candidates = new ArrayList<>();
@@ -67,8 +76,8 @@ class ExtractiveAnswerer {
         List<Candidate> best = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (Scored s : scored) {
-            if (best.size() >= MAX_SENTENCES) break;
-            if (s.score() < scored.get(0).score() * 0.35) break;
+            if (best.size() >= max) break;
+            if (s.score() < scored.get(0).score() * (detailed ? 0.25 : 0.35)) break;
             String key = s.c().text().toLowerCase(Locale.ROOT);
             if (seen.add(key)) best.add(s.c());
         }

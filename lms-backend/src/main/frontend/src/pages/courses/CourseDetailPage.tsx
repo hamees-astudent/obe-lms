@@ -93,9 +93,8 @@ function DocumentContent({ content }: { content: Record<string, unknown> }) {
     setDownloadError('');
     setLoading(true);
     try {
-      // Always via a pre-signed URL. Linking at /api/files/{id}/download
-      // directly sends no Authorization header — the token is held in memory,
-      // not in a cookie — so that route always answers 401.
+      // Fetched through the API with the access token (held in memory, not a
+      // cookie, so a plain link would get 401) and shown from a blob: URL.
       await openFile(fileId);
     } catch (err) {
       setDownloadError(parseApiError(err, 'Could not open the file.'));

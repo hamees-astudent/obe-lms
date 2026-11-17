@@ -308,6 +308,10 @@ jwt:
 
 # ── Application-specific ──────────────────────────────────────────────────────
 app:
+  # Public address of the app as users open it (scheme, host, optional port and
+  # path prefix; behind a proxy, the proxy's address). Every absolute link the
+  # backend sends out is built from it via AppUrls — e.g. password-reset e-mails.
+  base-url: ${APP_BASE_URL:http://localhost:8080}
   attendance:
     threshold-percentage: ${ATTENDANCE_THRESHOLD:75}
   # ── Exam marks-sheet extraction ─────────────────────────────────────────────
@@ -366,6 +370,9 @@ app:
   files:
     storage:
       endpoint:                  ${MINIO_ENDPOINT:http://localhost:9000}
+      # How browsers reach MinIO, for pre-signed URLs (e.g. https://files.example.edu).
+      # Blank = endpoint. The app's own pages open files through /api/files/{id}/download.
+      public-endpoint:           ${MINIO_PUBLIC_ENDPOINT:}
       access-key:                ${MINIO_ACCESS_KEY:minioadmin}
       secret-key:                ${MINIO_SECRET_KEY:minioadmin}
       bucket-name:               ${MINIO_BUCKET:lms-files}

@@ -5,6 +5,7 @@ import com.lms.modules.files.dto.PresignedUrlResponse;
 import com.lms.modules.files.dto.UploadedFileResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -14,6 +15,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
@@ -98,12 +100,15 @@ public class FileController {
     // ── Direct download ───────────────────────────────────────────────────────
 
     /**
-     * Stream the file content directly.
-     * Use {@code /url} instead for large files to avoid proxying through the app.
+     * Stream the file content directly, as an attachment or, with
+     * {@code inline=true}, for the browser to display (PDFs, images).
+     * The frontend opens files this way: it is same-origin, so it works from
+     * any machine, whereas a pre-signed URL points at the storage host.
      * Roles: any authenticated user.
      */
     @GetMapping("/{id}/download")
-    public ResponseEntity<InputStreamResource> download(@PathVariable UUID id) {
+    public ResponseEntity<InputStreamResource> download(@PathVariable UUID id,
+                                                        @RequestParam(defaultValue = "false") boolean inline) {
         DownloadResult result = fileService.download(id);
 
         MediaType mediaType;
@@ -115,7 +120,8 @@ public class FileController {
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + result.filename() + "\"")
+                        (inline ? ContentDisposition.inline() : ContentDisposition.attachment())
+                                .filename(result.filename(), StandardCharsets.UTF_8).build().toString())
                 .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(result.fileSize()))
                 .contentType(mediaType)
                 .body(new InputStreamResource(result.stream()));

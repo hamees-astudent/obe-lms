@@ -3,6 +3,7 @@ package com.lms.modules.auth;
 import com.lms.infrastructure.security.UserPrincipal;
 import com.lms.infrastructure.security.jwt.JwtProperties;
 import com.lms.infrastructure.security.jwt.JwtTokenProvider;
+import com.lms.infrastructure.web.AppUrls;
 import com.lms.modules.auth.dto.LoginRequest;
 import com.lms.modules.auth.dto.LoginResponse;
 import com.lms.modules.auth.dto.PasswordResetConfirmDto;
@@ -52,12 +53,10 @@ class AuthService {
     private final JwtProperties         jwtProperties;
     private final StringRedisTemplate   redisTemplate;
     private final JavaMailSender        mailSender;
+    private final AppUrls               appUrls;
 
     @Value("${spring.mail.username:noreply@lms.local}")
     private String mailFrom;
-
-    @Value("${app.base-url:http://localhost:8080}")
-    private String baseUrl;
 
     // ── Login ─────────────────────────────────────────────────────────────────
 
@@ -168,10 +167,11 @@ class AuthService {
             message.setText(String.format(
                     "Hi %s,%n%n" +
                     "Click the link below to reset your password (valid for 15 minutes):%n%n" +
-                    "%s/reset-password?token=%s%n%n" +
+                    "%s%n%n" +
                     "If you did not request this, please ignore this email.%n%n" +
                     "\u2014 LMS Team",
-                    name, baseUrl, token));
+                    name, appUrls.link("/reset-password").queryParam("token", token)
+                            .build().encode().toUriString()));
             mailSender.send(message);
         } catch (Exception e) {
             log.warn("Failed to send password reset email to {}: {}", to, e.getMessage());

@@ -138,6 +138,38 @@ class StudyAiSqlIT {
     }
 
     @Test
+    @DisplayName("two wordings of one question find the same passage with the same coverage")
+    void wordingDoesNotChangeTheDecision() {
+        var a = retrieval.searchScored(List.of(psc), "describe the uses of indexes in real-world queries", 2500, null);
+        var b = retrieval.searchScored(List.of(psc), "explain indexes in a real world query", 2500, null);
+        assertThat(a.chunks().get(0).heading()).isEqualTo("Indexes").isEqualTo(b.chunks().get(0).heading());
+        assertThat(a.coverage()).isGreaterThanOrEqualTo(ChatService.MIN_COVERAGE);
+        assertThat(b.coverage()).isGreaterThanOrEqualTo(ChatService.MIN_COVERAGE);
+
+        var unrelated = retrieval.searchScored(List.of(psc), "explain photosynthesis in tropical plants", 2500, null);
+        assertThat(unrelated.chunks().isEmpty() || unrelated.coverage() < ChatService.MIN_COVERAGE).isTrue();
+    }
+
+    @Test
+    @DisplayName("front matter is ranked below content and left out of question generation")
+    void frontMatterIsDemotedAndExcluded() {
+        UUID book = insert("""
+                INSERT INTO course_materials (psc_id, uploaded_by, type, title, content, visible)
+                VALUES (?, ?, 'DOCUMENT', 'Textbook', '{}', TRUE) RETURNING id""", psc, teacher);
+        List<Chunk> front = new Chunker(NlpFixtures.ANALYZER).chunk(List.of(new DocumentTextExtractor.Segment("PAGE", 1,
+                "Preface", "This book on transactions and deadlock grew out of our lectures. We thank our students "
+                + "for their patience with transactions, deadlock and isolation over many years of teaching.")));
+        ingestion.replaceIndex(book, psc, front, List.of(), 1, "def");
+
+        assertThat(retrieval.search(List.of(psc), "deadlock between transactions", 2500, null).get(0).heading())
+                .isEqualTo("Transactions");
+        assertThat(retrieval.forGeneration(psc, null, List.of(book, material), false, 80))
+                .noneMatch(c -> "Preface".equals(c.heading()));
+        assertThatThrownBy(() -> retrieval.forGeneration(psc, null, List.of(book), false, 80))
+                .hasMessageContaining("front matter");
+    }
+
+    @Test
     @DisplayName("hidden material and other offerings are never searched")
     void scopeAndVisibility() {
         assertThat(retrieval.search(List.of(otherPsc), "primary key", 2500, null)).isEmpty();

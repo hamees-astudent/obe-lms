@@ -39,6 +39,7 @@ import {
   type UpdateDraftBody,
   type UUID,
 } from '@/types/api';
+import RichText from '@/components/ai/RichText';
 
 type Step = 'source' | 'configure' | 'review';
 
@@ -475,13 +476,13 @@ function ReviewStep({ pscId, courseId, jobId, onNew }: { pscId: UUID; courseId?:
                   {d.edited && <Badge variant="warning">Edited</Badge>}
                   {d.status === 'ACCEPTED' && <Badge variant="success">Saved</Badge>}
                 </div>
-                <p className="text-sm font-medium text-gray-900">{d.questionText}</p>
+                <RichText text={d.questionText} compact className="text-sm font-medium text-gray-900" />
                 {!isWrittenType(d.type) ? (
                   <ul className="mt-2 space-y-1">
                     {d.options.map((o, oi) => (
                       <li key={o.id} className={`flex items-center gap-2 text-sm ${d.correctAnswer.includes(o.id) ? 'font-medium text-green-700' : 'text-gray-700'}`}>
                         <span className="w-4 text-xs text-gray-400">{String.fromCharCode(65 + oi)}</span>
-                        {o.text}
+                        <RichText text={o.text} compact />
                         {d.correctAnswer.includes(o.id) && <CheckCircle2 size={13} />}
                       </li>
                     ))}
@@ -489,7 +490,7 @@ function ReviewStep({ pscId, courseId, jobId, onNew }: { pscId: UUID; courseId?:
                 ) : (
                   <details className="mt-2 text-sm">
                     <summary className="cursor-pointer text-xs text-primary-600">Model answer and rubric</summary>
-                    <p className="mt-1 text-gray-700">{d.modelAnswer}</p>
+                    {d.modelAnswer && <RichText text={d.modelAnswer} className="mt-1 text-gray-700" />}
                     <ul className="mt-1 list-disc pl-5 text-xs text-gray-600">
                       {d.rubric.map((r, ri) => <li key={ri}>{r.criterion} — {fmtMarks(r.marks)}{r.keywords?.length ? ` (${r.keywords.join(', ')})` : ''}</li>)}
                     </ul>

@@ -17,7 +17,7 @@ import { nullIfNotFound } from '@/lib/queries';
 import { toast } from '@/components/ui/Toast';
 import { parseApiError } from '@/lib/apiError';
 import { formatDate, formatDateTime } from '@/lib/datetime';
-import { uploadFile, validateUpload, presignedUrlByKey } from '@/lib/files';
+import { uploadFile, validateUpload, objectUrlByKey } from '@/lib/files';
 import { useAuthStore } from '@/store/authStore';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -45,9 +45,9 @@ const ACCEPTED_IMAGES = ['.jpg', '.jpeg', '.png', '.webp'];
 function ScanImage({ imageKey }: { imageKey: string }) {
   const urlQ = useQuery({
     queryKey: ['files', 'url-by-key', imageKey],
-    queryFn: () => presignedUrlByKey(imageKey),
-    // Pre-signed URLs expire; refetching on mount is cheaper than a broken image.
-    staleTime: 5 * 60 * 1000,
+    queryFn: () => objectUrlByKey(imageKey),
+    // A blob: URL fetched through the API; kept while the page is in the cache.
+    staleTime: 30 * 60 * 1000,
   });
 
   if (urlQ.isLoading) {

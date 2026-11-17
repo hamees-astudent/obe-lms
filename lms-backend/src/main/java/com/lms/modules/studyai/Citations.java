@@ -57,6 +57,7 @@ class Citations {
 
     /** Maps markers to passages, drops unknown ones, and checks every sentence's support. */
     Checked check(String answer, List<RetrievedChunk> chunks) {
+        answer = normaliseMarkers(answer);
         Set<Integer> used = new LinkedHashSet<>();
         Matcher m = MARKER.matcher(answer);
         StringBuilder cleaned = new StringBuilder();
@@ -80,9 +81,24 @@ class Citations {
         return new Checked(text, citations, used.isEmpty() || !supported(text, chunks));
     }
 
+    /** The citation for passage {@code n} (1-based); {@code n <= 0} gives one with no marker. */
+    /** The text without source markers — for text shown where the passages are not listed. */
+    static String stripMarkers(String text) {
+        return MARKER.matcher(normaliseMarkers(text)).replaceAll("").replaceAll(" +([.,;:])", "$1").strip();
+    }
+
+    /** "(S1)", "[Source 2]", "[S1][S2]" → "[S1]", "[S2]", "[S1, S2]": one form for the checker and the UI. */
+    static String normaliseMarkers(String text) {
+        return text
+                .replaceAll("\\[\\s*[Ss]ource\\s*(\\d+)\\s*]", "[S$1]")
+                .replaceAll("\\(\\s*(S\\d+(?:\\s*[,;]\\s*S?\\d+)*)\\s*\\)", "[$1]")
+                .replaceAll("\\[\\s*(S\\d+)\\s*]\\s*\\[\\s*(S\\d+)\\s*]", "[$1, $2]");
+    }
+
     static CitationResponse citation(int n, RetrievedChunk c) {
-        return new CitationResponse("S" + n, c.id(), c.materialId(), c.materialTitle(), c.locationType(),
-                c.locationStart(), c.locationEnd(), c.locationLabel(), c.heading());
+        return new CitationResponse(n > 0 ? "S" + n : null, c.id(), c.materialId(), c.materialTitle(), c.locationType(),
+                c.locationStart(), c.locationEnd(), c.locationLabel(), c.heading(),
+                CitationResponse.excerptOf(c.content()));
     }
 
     /** Every substantial sentence shares at least half its content terms with the passages. */
@@ -92,7 +108,14 @@ class Citations {
             sourceTerms.addAll(analyzer.terms(c.content()));
             if (c.heading() != null) sourceTerms.addAll(analyzer.terms(c.heading()));
         }
-        for (String sentence : analyzer.sentences(MARKER.matcher(answer).replaceAll(""))) {
+        // Code and formulas are checked as written, not as prose: their tokens ("frac", "def") are not terms.
+        String prose = MARKER.matcher(answer).replaceAll("")
+                .replaceAll("(?s)```.*?(```|$)", " ")
+                .replaceAll("(?s)\\$\\$.*?\\$\\$", " ")
+                .replaceAll("\\$[^$\n]+\\$", " ")
+                .replaceAll("`[^`\n]+`", " ")
+                .replaceAll("(?m)^\\s*#{1,6}\\s+", "");
+        for (String sentence : analyzer.sentences(prose)) {
             Set<String> terms = analyzer.termSet(sentence);
             if (terms.size() < 4) continue;      // "Here is a summary:" and the like
             long hit = terms.stream().filter(sourceTerms::contains).count();
